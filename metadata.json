@@ -1,0 +1,8 @@
+{
+  "name": "Shantety (شنطتي) — E-Commerce Platform",
+  "description": "Official Shantety (شنطتي) e-commerce platform for women's bags, shoes, and fashion accessories in Egypt. Featuring bilingual Arabic/English storefront, atomic inventory, order tracking, and comprehensive admin dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
