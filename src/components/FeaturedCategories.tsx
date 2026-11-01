@@ -1,10 +1,9 @@
 import React from 'react';
 import { useStore } from '../context/StoreContext';
-import { INITIAL_CATEGORIES } from '../data/initialData';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
 
 export const FeaturedCategories: React.FC = () => {
-  const { language, setCurrentView, setSelectedCategory } = useStore();
+  const { language, setCurrentView, setSelectedCategory, categories } = useStore();
 
   const handleSelectCategory = (categoryId: string) => {
     setSelectedCategory(categoryId);
@@ -38,7 +37,7 @@ export const FeaturedCategories: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-          {INITIAL_CATEGORIES.map((category) => (
+          {categories.map((category) => (
             <div
               key={category.id}
               onClick={() => handleSelectCategory(category.id)}

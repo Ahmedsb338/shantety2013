@@ -23,36 +23,44 @@ export const OrderTrackingPage: React.FC = () => {
   const [searchedOrder, setSearchedOrder] = useState<Order | null>(activeOrder || null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleTrack = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleTrack = (e?: React.FormEvent, directNumber?: string) => {
+    if (e) e.preventDefault();
     setErrorMsg(null);
 
-    if (!orderNumber.trim()) {
-      setErrorMsg(language === 'ar' ? 'يرجى إدخال رقم الطلب' : 'Please enter the order number');
+    const queryNum = (directNumber || orderNumber).trim();
+
+    if (!queryNum) {
+      setErrorMsg(language === 'ar' ? 'يرجى إدخال رقم الطلب أو رقم الهاتف' : 'Please enter your order or phone number');
       return;
     }
 
-    if (!trackingToken.trim()) {
-      setErrorMsg(
-        language === 'ar'
-          ? 'يرجى إدخال رمز الأمان والتتبع السري (Tracking Token) الممنوح عند إتمام الطلب'
-          : 'Please enter the secret tracking token provided upon order completion'
-      );
-      return;
+    // 1. If tracking token is provided, verify against token first
+    if (trackingToken.trim()) {
+      const orderWithToken = StoreDatabase.getOrderByNumberAndToken(queryNum, trackingToken.trim());
+      if (orderWithToken) {
+        setSearchedOrder(orderWithToken);
+        return;
+      }
     }
 
-    const order = StoreDatabase.getOrderByNumberAndToken(orderNumber, trackingToken);
+    // 2. Direct search by Order Number, Phone, or Carrier AWB
+    const order = StoreDatabase.findOrderBySearch(queryNum);
     if (!order) {
       setErrorMsg(
         language === 'ar'
-          ? 'لم يتم العثور على طلب مطابق لرقم الطلب ورمز الأمان المدخلين. تأكد من صحة الرمز السري.'
-          : 'No order matched this order number and security token combination. Verify your credentials.'
+          ? 'لم يتم العثور على طلب مطابق لرقم الطلب أو الهاتف المدخل. يرجى التأكد من كتابة الرقم بشكل صحيح (مثال: SHN-2601).'
+          : 'No order matched this order number or phone. Please verify your input (e.g. SHN-2601).'
       );
       setSearchedOrder(null);
       return;
     }
 
     setSearchedOrder(order);
+  };
+
+  const loadSampleOrder = (num: string) => {
+    setOrderNumber(num);
+    handleTrack(undefined, num);
   };
 
   const getStepStatus = (step: 'pending' | 'processing' | 'shipped' | 'delivered', current: string) => {
@@ -73,6 +81,18 @@ export const OrderTrackingPage: React.FC = () => {
     return 'upcoming';
   };
 
+  // Calculate estimated arrival date (e.g. 2-3 business days after creation)
+  const getEstimatedArrival = (order: Order) => {
+    const created = new Date(order.created_at);
+    const estDate = new Date(created.getTime() + 3 * 24 * 60 * 60 * 1000);
+    return estDate.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* Title */}
@@ -81,29 +101,50 @@ export const OrderTrackingPage: React.FC = () => {
           <PackageCheck className="w-6 h-6" />
         </div>
         <h1 className="text-2xl sm:text-3xl font-black text-stone-900">
-          {language === 'ar' ? 'تتبع حالة شحنتك المباشرة' : 'Track Your Shipment'}
+          {language === 'ar' ? 'تتبع حالة شحنتك المباشرة (Track My Order)' : 'Track Your Shipment'}
         </h1>
         <p className="text-xs text-stone-500 mt-1">
           {language === 'ar'
-            ? 'نظام تتبع مؤمن لحماية خصوصية بيانات عملائنا في جمهورية مصر العربية'
-            : 'Secure authenticated tracking for customer privacy protection'}
+            ? 'تتبع فوري ومباشر لشحنات بوسطة ومايلرز ومندوب شنطتي بجميع محافظات مصر'
+            : 'Real-time tracking for Bosta, Mylerz, and Shantety Express deliveries across Egypt'}
         </p>
+
+        {/* Demo Fast Track Chips */}
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <span className="text-[11px] font-bold text-stone-400">
+            {language === 'ar' ? 'أرقام شحنات تجريبية للمعاينة:' : 'Sample active shipments:'}
+          </span>
+          <button
+            type="button"
+            onClick={() => loadSampleOrder('SHN-2601')}
+            className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 font-mono text-[11px] rounded-lg border border-stone-300 font-bold cursor-pointer transition-colors"
+          >
+            SHN-2601 (بوسطة - جاري الشحن)
+          </button>
+          <button
+            type="button"
+            onClick={() => loadSampleOrder('SHN-2602')}
+            className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 font-mono text-[11px] rounded-lg border border-stone-300 font-bold cursor-pointer transition-colors"
+          >
+            SHN-2602 (مايلرز - تم التسليم)
+          </button>
+        </div>
       </div>
 
       {/* Authenticated Tracking Form */}
       <div className="bg-white rounded-2xl border border-stone-200 p-6 sm:p-8 shadow-xs">
-        <form onSubmit={handleTrack} className="space-y-4">
+        <form onSubmit={(e) => handleTrack(e)} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-bold text-stone-700">
-                {language === 'ar' ? 'رقم الطلب (Order #) *' : 'Order Number *'}
+                {language === 'ar' ? 'رقم الطلب أو الهاتف أو بوليصة الشحن *' : 'Order ID or Phone Number *'}
               </label>
               <input
                 type="text"
                 required
                 value={orderNumber}
                 onChange={(e) => setOrderNumber(e.target.value)}
-                placeholder="SHN-xxxx (مثال: SHN-2601)"
+                placeholder="مثال: SHN-2601 أو 01026042168"
                 className="w-full text-xs p-3 rounded-lg border border-stone-300 focus:outline-none focus:border-[#E10600] font-mono uppercase"
               />
             </div>
@@ -111,37 +152,36 @@ export const OrderTrackingPage: React.FC = () => {
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-stone-700">
-                  {language === 'ar' ? 'رمز الأمان السري (Tracking Token) *' : 'Security Token *'}
+                  {language === 'ar' ? 'رمز الأمان السري (اختياري)' : 'Security Token (Optional)'}
                 </label>
                 <span className="text-[10px] text-stone-400 flex items-center gap-1">
                   <Lock className="w-3 h-3 text-[#E10600]" />
-                  <span>{language === 'ar' ? 'حماية مشددة' : 'Encrypted'}</span>
+                  <span>{language === 'ar' ? 'حماية البيانات' : 'Encrypted'}</span>
                 </span>
               </div>
               <input
                 type="text"
-                required
                 value={trackingToken}
                 onChange={(e) => setTrackingToken(e.target.value)}
-                placeholder="tk_xxxxxxxxxxxx (مثال: tk_98a7f41c2d)"
+                placeholder="tk_xxxxxxxxxxxx (اختياري)"
                 className="w-full text-xs p-3 rounded-lg border border-stone-300 focus:outline-none focus:border-[#E10600] font-mono"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
             <p className="text-[11px] text-stone-500">
               {language === 'ar'
-                ? 'تجد رمز التتبع في رسالة التأكيد أو الفاتورة الممنوحة عند الطلب.'
-                : 'Found in your confirmation receipt upon order checkout.'}
+                ? 'يمكنك التتبع برقم الطلب (مثل SHN-2601) أو برقم هاتفك المسجل أثناء الطلب.'
+                : 'Track using your order number (e.g. SHN-2601) or registered phone number.'}
             </p>
 
             <button
               type="submit"
-              className="px-6 py-2.5 bg-[#E10600] hover:bg-[#C50500] text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+              className="w-full sm:w-auto px-6 py-2.5 bg-[#E10600] hover:bg-[#C50500] text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs active:scale-98"
             >
               <Search className="w-3.5 h-3.5" />
-              <span>{language === 'ar' ? 'استعلام وتتبع' : 'Verify & Track'}</span>
+              <span>{language === 'ar' ? 'استعلام وتتبع الشحنة' : 'Track Order'}</span>
             </button>
           </div>
         </form>
@@ -197,6 +237,47 @@ export const OrderTrackingPage: React.FC = () => {
                 {searchedOrder.shipping_provider} · {searchedOrder.tracking_number}
               </span>
             </div>
+          </div>
+
+          {/* Estimated Arrival Date & Carrier Hub Banner */}
+          <div className="bg-gradient-to-r from-red-50 to-stone-50 border border-red-100 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white border border-red-200 text-[#E10600] flex items-center justify-center font-bold shrink-0 shadow-2xs">
+                <Truck className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[11px] font-bold text-stone-500 block">
+                  {language === 'ar' ? 'تاريخ الوصول المتوقع (Estimated Delivery Date):' : 'Estimated Delivery Date:'}
+                </span>
+                <span className="text-sm font-black text-stone-900">
+                  {searchedOrder.status === 'delivered'
+                    ? (language === 'ar' ? '✓ تم تسليم الشحنة بنجاح للعميل' : 'Delivered Successfully')
+                    : getEstimatedArrival(searchedOrder)}
+                </span>
+                <p className="text-[10px] text-stone-500">
+                  {language === 'ar'
+                    ? `إلى: ${searchedOrder.shipping_address.city}، ${searchedOrder.shipping_address.governorate} — توصيل سريع لباب المنزل`
+                    : `Destination: ${searchedOrder.shipping_address.city}, ${searchedOrder.shipping_address.governorate}`}
+                </p>
+              </div>
+            </div>
+
+            {searchedOrder.shipping_provider && searchedOrder.tracking_number && (
+              <a
+                href={
+                  searchedOrder.shipping_provider.toLowerCase().includes('bosta')
+                    ? `https://bosta.co/tracking-shipment/?track=${searchedOrder.tracking_number}`
+                    : searchedOrder.shipping_provider.toLowerCase().includes('mylerz')
+                    ? `https://www.mylerz.com/tracking?track=${searchedOrder.tracking_number}`
+                    : `https://wa.me/201026042168?text=${encodeURIComponent(`مرحباً، أستعلم عن شحنتي رقم ${searchedOrder.order_number} مع شركة ${searchedOrder.shipping_provider}`)}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-2 px-3.5 bg-stone-900 hover:bg-[#E10600] text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 self-start sm:self-auto cursor-pointer"
+              >
+                <span>{language === 'ar' ? `تتبع عبر موقع ${searchedOrder.shipping_provider}` : `Track on ${searchedOrder.shipping_provider}`}</span>
+              </a>
+            )}
           </div>
 
           {/* Progress Timeline */}

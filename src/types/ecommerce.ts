@@ -228,3 +228,43 @@ export interface ProductReview {
   };
 }
 
+export interface SiteCustomization {
+  heroHeadlineAr: string;
+  heroHeadlineEn: string;
+  heroSubtitleAr: string;
+  heroSubtitleEn: string;
+  heroBadgeAr: string;
+  heroBadgeEn: string;
+  heroImage: string;
+  heroButtonTextAr: string;
+  heroButtonTextEn: string;
+  topAnnouncementAr: string;
+  topAnnouncementEn: string;
+  isAnnouncementEnabled: boolean;
+  phone: string;
+  phoneDisplay: string;
+  whatsapp: string;
+  email: string;
+  branch1AddressAr: string;
+  branch1AddressEn: string;
+  branch2AddressAr: string;
+  branch2AddressEn: string;
+  footerCopyrightAr?: string;
+  footerCopyrightEn?: string;
+}
+
+export interface VisitorMetrics {
+  activeVisitorsNow: number;
+  todayVisitors: number;
+  weeklyVisitors: number;
+  todayPageviews: number;
+  avgSessionDuration: string;
+  bounceRate: number;
+  conversionRate: number;
+  deviceBreakdown: { mobile: number; desktop: number; tablet: number };
+  trafficSources: { nameAr: string; nameEn: string; percentage: number; visits: number }[];
+  funnel: { stepAr: string; stepEn: string; count: number; percentage: number }[];
+  topViewedProducts: { productId: string; nameAr: string; nameEn: string; views: number; addToCartRate: number }[];
+}
+
+

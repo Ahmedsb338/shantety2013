@@ -49,10 +49,17 @@ import {
   Check,
   ExternalLink,
   Lock,
+  Edit3,
+  FolderTree,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { AdminGate } from './AdminGate';
 import { AddProductModal } from './AddProductModal';
+import { EditProductModal } from './EditProductModal';
+import { ImportAllProductsModal } from './ImportAllProductsModal';
+import { CategoriesManagerTab } from './CategoriesManagerTab';
+import { CmsContentTab } from './CmsContentTab';
+import { VisitorAnalyticsTab } from './VisitorAnalyticsTab';
 import { ShippingIntegrationsTab } from './ShippingIntegrationsTab';
 import { AiAnalyticsTab } from './AiAnalyticsTab';
 import { SystemTestTab } from './SystemTestTab';
@@ -60,6 +67,9 @@ import { SystemTestTab } from './SystemTestTab';
 type AdminTab =
   | 'overview'
   | 'products'
+  | 'categories'
+  | 'cms'
+  | 'visitors'
   | 'shipping'
   | 'ai-analytics'
   | 'system-tests'
@@ -107,6 +117,8 @@ export const AdminDashboard: React.FC = () => {
 
   // New Product Modal state
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [selectedProductForEdit, setSelectedProductForEdit] = useState<Product | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
 
   // Reload state
@@ -311,6 +323,9 @@ export const AdminDashboard: React.FC = () => {
           {[
             { id: 'overview', label_ar: 'نظرة عامة ومؤشرات', label_en: 'Overview', icon: BarChart3 },
             { id: 'products', label_ar: 'المنتجات والـ SKUs', label_en: 'Products & SKUs', icon: Package },
+            { id: 'categories', label_ar: 'إدارة الفئات والأقسام', label_en: 'Categories', icon: FolderTree },
+            { id: 'cms', label_ar: 'محتوى وتخصيص الموقع والبانر', label_en: 'CMS & Hero', icon: Sparkles },
+            { id: 'visitors', label_ar: 'تحليلات وسلوك الزوار', label_en: 'Visitors & Behavior', icon: Users },
             { id: 'shipping', label_ar: 'شركات الشحن واللوجستيات', label_en: 'Shipping Hub', icon: Truck },
             { id: 'ai-analytics', label_ar: 'تحليلات الذكاء الاصطناعي', label_en: 'AI Analytics', icon: Sparkles },
             { id: 'system-tests', label_ar: 'فحص العمليات الشامل', label_en: 'System Tests', icon: FileCheck },
@@ -520,24 +535,32 @@ export const AdminDashboard: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsProductModalOpen(true)}
-                  className="py-2.5 px-4 bg-[#E10600] hover:bg-[#c20500] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-98"
+                  className="py-2.5 px-3.5 bg-[#E10600] hover:bg-[#c20500] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-98"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>{language === 'ar' ? 'إضافة منتج جديد' : 'Add New Product'}</span>
+                  <span>{language === 'ar' ? 'إضافة منتج جديد' : 'Add Product'}</span>
+                </button>
+                <button
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="py-2.5 px-3.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                  title="استيراد مجمع لكامل الكتالوج زي ووكومرس"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{language === 'ar' ? 'استيراد مجمع للمنتجات (Import All)' : 'Import All Products'}</span>
                 </button>
                 <button
                   onClick={handleDownloadCSV}
-                  className="py-2.5 px-3.5 bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  className="py-2.5 px-3 bg-white border border-stone-300 hover:bg-stone-50 text-stone-700 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-2xs"
                 >
                   <Download className="w-3.5 h-3.5 text-stone-500" />
-                  <span>{language === 'ar' ? 'تصدير للـ Excel' : 'Export Catalog'}</span>
+                  <span>{language === 'ar' ? 'تصدير للـ Excel' : 'Export'}</span>
                 </button>
               </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
               <div className="overflow-x-auto min-w-full">
-                <table className="w-full min-w-[650px] text-xs text-left rtl:text-right">
+                <table className="w-full min-w-[750px] text-xs text-left rtl:text-right">
                 <thead className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase">
                   <tr>
                     <th className="p-3.5">{language === 'ar' ? 'الصورة' : 'Image'}</th>
@@ -546,6 +569,7 @@ export const AdminDashboard: React.FC = () => {
                     <th className="p-3.5">{language === 'ar' ? 'السعر' : 'Price'}</th>
                     <th className="p-3.5">{language === 'ar' ? 'المتغيرات والـ SKUs' : 'Variants & SKUs'}</th>
                     <th className="p-3.5">{language === 'ar' ? 'المخزون الكلي' : 'Total Available'}</th>
+                    <th className="p-3.5 text-center">{language === 'ar' ? 'الإجراءات (WooCommerce)' : 'Actions'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
@@ -615,6 +639,17 @@ export const AdminDashboard: React.FC = () => {
                               {totalAvail} {language === 'ar' ? 'قطعة' : 'units'}
                             </span>
                           </td>
+                          <td className="p-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedProductForEdit(product)}
+                              className="py-1.5 px-3 bg-stone-900 hover:bg-[#E10600] text-white font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[11px] mx-auto active:scale-95 shadow-2xs"
+                              title="تعديل بيانات المنتج وسعره ومخزونه"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>{language === 'ar' ? 'تعديل السعر والبيانات' : 'Edit Product'}</span>
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -624,6 +659,15 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+        {/* TAB: CATEGORIES MANAGER */}
+        {activeTab === 'categories' && <CategoriesManagerTab />}
+
+        {/* TAB: CMS & SITE CONTENT & HERO CONTAINER */}
+        {activeTab === 'cms' && <CmsContentTab />}
+
+        {/* TAB: VISITOR ANALYTICS & BEHAVIOR */}
+        {activeTab === 'visitors' && <VisitorAnalyticsTab />}
 
         {/* TAB 3: CENTRALIZED ATOMIC INVENTORY */}
         {activeTab === 'inventory' && (
@@ -1314,6 +1358,45 @@ export const AdminDashboard: React.FC = () => {
           refreshProducts();
           refreshAll();
         }}
+      />
+
+      {/* WooCommerce Style Edit Product Modal */}
+      {selectedProductForEdit && (
+        <EditProductModal
+          product={selectedProductForEdit}
+          isOpen={!!selectedProductForEdit}
+          onClose={() => setSelectedProductForEdit(null)}
+          onSaved={(updated) => {
+            setProducts(StoreDatabase.getProducts());
+            refreshProducts();
+            refreshAll();
+            showToast(
+              language === 'ar'
+                ? `تم تحديث المنتج (${updated.name_ar}) والأسعار بنجاح`
+                : `Product ${updated.name_en} updated successfully`,
+              'success'
+            );
+          }}
+          language={language}
+        />
+      )}
+
+      {/* Bulk Import All Products Modal */}
+      <ImportAllProductsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportComplete={(count) => {
+          setProducts(StoreDatabase.getProducts());
+          refreshProducts();
+          refreshAll();
+          showToast(
+            language === 'ar'
+              ? `تم استيراد ودمج ${count} منتج في المتجر وقاعدة البيانات بنجاح`
+              : `Imported and merged ${count} products into catalog`,
+            'success'
+          );
+        }}
+        language={language}
       />
     </div>
   );

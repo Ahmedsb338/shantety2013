@@ -1,4 +1,6 @@
-import { db } from './index.ts';
+// ─── src/db/queries.ts (محوّل لـ Workers + Hyperdrive) ──────────────
+
+import { getDb } from "./index.ts";
 import {
   categories,
   brands,
@@ -12,8 +14,8 @@ import {
   purchaseOrders,
   auditLogs,
   users,
-} from './schema.ts';
-import { eq, desc } from 'drizzle-orm';
+} from "./schema.ts";
+import { eq, desc } from "drizzle-orm";
 import {
   INITIAL_CATEGORIES,
   INITIAL_BRANDS,
@@ -23,18 +25,21 @@ import {
   INITIAL_ORDERS,
   INITIAL_SUPPLIERS,
   INITIAL_AUDIT_LOGS,
-} from '../data/initialData.ts';
-import { Product, Order, Supplier, PurchaseOrder, AuditLog, InventoryMovement } from '../types/ecommerce.ts';
+} from "../data/initialData.ts";
+import { Product, Order, Supplier, PurchaseOrder, AuditLog, InventoryMovement } from "../types/ecommerce.ts";
+
+type Env = { HYPERDRIVE: Hyperdrive };
 
 // Auto-seed database if empty
-export async function seedDatabaseIfNeeded() {
+export async function seedDatabaseIfNeeded(env: Env) {
+  const { db, pool } = getDb(env);
   try {
     const existingProducts = await db.select({ id: products.id }).from(products).limit(1);
     if (existingProducts.length > 0) {
       return;
     }
 
-    console.log('Seeding Shantety database with initial catalog...');
+    console.log("Seeding Shantety database with initial catalog...");
 
     // 1. Categories
     for (const cat of INITIAL_CATEGORIES) {
@@ -177,18 +182,21 @@ export async function seedDatabaseIfNeeded() {
       }).onConflictDoNothing();
     }
 
-    console.log('Shantety database seeding completed successfully.');
+    console.log("Shantety database seeding completed successfully.");
   } catch (error) {
-    console.error('Database seeding failed:', error);
-    throw new Error('Database seeding failed.', { cause: error });
+    console.error("Database seeding failed:", error);
+    throw new Error("Database seeding failed.", { cause: error });
+  } finally {
+    await pool.end();
   }
 }
 
 // ---------------- PRODUCTS ----------------
 
-export async function getDbProducts(): Promise<Product[]> {
+export async function getDbProducts(env: Env): Promise<Product[]> {
+  const { db, pool } = getDb(env);
   try {
-    await seedDatabaseIfNeeded();
+    await seedDatabaseIfNeeded(env);
 
     const prods = await db.select().from(products);
     const variants = await db.select().from(productVariants);
@@ -198,8 +206,8 @@ export async function getDbProducts(): Promise<Product[]> {
         id: v.id,
         product_id: v.productId,
         sku: v.sku,
-        color_id: v.colorId || '',
-        size_id: v.sizeId || '',
+        color_id: v.colorId || "",
+        size_id: v.sizeId || "",
         price: v.price,
         sale_price: v.salePrice ?? undefined,
         stock_on_hand: v.stockOnHand,
@@ -215,16 +223,16 @@ export async function getDbProducts(): Promise<Product[]> {
         name_en: p.nameEn,
         description_ar: p.descriptionAr,
         description_en: p.descriptionEn,
-        category_id: p.categoryId || '',
-        brand_id: p.brandId || '',
+        category_id: p.categoryId || "",
+        brand_id: p.brandId || "",
         base_price: p.basePrice,
         base_sale_price: p.baseSalePrice ?? undefined,
         images: p.images || [],
         is_featured: p.isFeatured ?? false,
         is_new_arrival: p.isNewArrival ?? false,
         is_best_seller: p.isBestSeller ?? false,
-        materials_ar: p.materialsAr || '',
-        materials_en: p.materialsEn || '',
+        materials_ar: p.materialsAr || "",
+        materials_en: p.materialsEn || "",
         dimensions: p.dimensions ?? undefined,
         created_at: p.createdAt ? p.createdAt.toISOString() : new Date().toISOString(),
         updated_at: p.updatedAt ? p.updatedAt.toISOString() : new Date().toISOString(),
@@ -232,22 +240,28 @@ export async function getDbProducts(): Promise<Product[]> {
       };
     });
   } catch (error) {
-    console.error('Failed to get products:', error);
-    throw new Error('Database query failed. Please try again later.', { cause: error });
+    console.error("Failed to get products:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  } finally {
+    await pool.end();
   }
 }
 
-export async function getDbProductById(id: string): Promise<Product | null> {
+export async function getDbProductById(id: string, env: Env): Promise<Product | null> {
+  const { db, pool } = getDb(env);
   try {
-    const list = await getDbProducts();
+    const list = await getDbProducts(env);
     return list.find((p) => p.id === id) || null;
   } catch (error) {
-    console.error('Failed to get product by id:', error);
-    throw new Error('Database query failed. Please try again later.', { cause: error });
+    console.error("Failed to get product by id:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  } finally {
+    await pool.end();
   }
 }
 
-export async function upsertDbProduct(product: Product): Promise<void> {
+export async function upsertDbProduct(product: Product, env: Env): Promise<void> {
+  const { db, pool } = getDb(env);
   try {
     await db.insert(products).values({
       id: product.id,
@@ -322,16 +336,19 @@ export async function upsertDbProduct(product: Product): Promise<void> {
       }
     }
   } catch (error) {
-    console.error('Failed to upsert product:', error);
-    throw new Error('Database query failed. Please try again later.', { cause: error });
+    console.error("Failed to upsert product:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  } finally {
+    await pool.end();
   }
 }
 
 // ---------------- ORDERS ----------------
 
-export async function getDbOrders(): Promise<Order[]> {
+export async function getDbOrders(env: Env): Promise<Order[]> {
+  const { db, pool } = getDb(env);
   try {
-    await seedDatabaseIfNeeded();
+    await seedDatabaseIfNeeded(env);
     const rows = await db.select().from(orders).orderBy(desc(orders.createdAt));
 
     return rows.map((r) => ({
@@ -347,23 +364,26 @@ export async function getDbOrders(): Promise<Order[]> {
       shipping_fee: r.shippingFee,
       discount: r.discount ?? 0,
       total: r.total,
-      currency: r.currency || 'EGP',
+      currency: r.currency || "EGP",
       status: r.status as any,
       payment_status: r.paymentStatus as any,
       payment_method: r.paymentMethod as any,
-      shipping_provider: r.shippingProvider || 'Shantety Express',
+      shipping_provider: r.shippingProvider || "Shantety Express",
       tracking_number: r.trackingNumber ?? undefined,
       notes: r.notes ?? undefined,
       created_at: r.createdAt ? r.createdAt.toISOString() : new Date().toISOString(),
       updated_at: r.updatedAt ? r.updatedAt.toISOString() : new Date().toISOString(),
     }));
   } catch (error) {
-    console.error('Failed to get orders:', error);
-    throw new Error('Database query failed. Please try again later.', { cause: error });
+    console.error("Failed to get orders:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  } finally {
+    await pool.end();
   }
 }
 
-export async function createDbOrder(order: Order): Promise<Order> {
+export async function createDbOrder(order: Order, env: Env): Promise<Order> {
+  const { db, pool } = getDb(env);
   try {
     await db.insert(orders).values({
       id: order.id,
@@ -378,27 +398,31 @@ export async function createDbOrder(order: Order): Promise<Order> {
       shippingFee: order.shipping_fee,
       discount: order.discount || 0,
       total: order.total,
-      currency: order.currency || 'EGP',
+      currency: order.currency || "EGP",
       status: order.status,
       paymentStatus: order.payment_status,
       paymentMethod: order.payment_method,
-      shippingProvider: order.shipping_provider || 'Shantety Express',
+      shippingProvider: order.shipping_provider || "Shantety Express",
       trackingNumber: order.tracking_number || null,
       notes: order.notes || null,
     });
 
     return order;
   } catch (error) {
-    console.error('Failed to create order:', error);
-    throw new Error('Database query failed. Please try again later.', { cause: error });
+    console.error("Failed to create order:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  } finally {
+    await pool.end();
   }
 }
 
 export async function updateDbOrderStatus(
   orderId: string,
-  status: Order['status'],
-  trackingNumber?: string
+  status: Order["status"],
+  trackingNumber: string | undefined,
+  env: Env
 ): Promise<void> {
+  const { db, pool } = getDb(env);
   try {
     const updateValues: Record<string, any> = {
       status,
@@ -410,16 +434,19 @@ export async function updateDbOrderStatus(
 
     await db.update(orders).set(updateValues).where(eq(orders.id, orderId));
   } catch (error) {
-    console.error('Failed to update order status:', error);
-    throw new Error('Database query failed. Please try again later.', { cause: error });
+    console.error("Failed to update order status:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  } finally {
+    await pool.end();
   }
 }
 
 // ---------------- AUDIT LOGS ----------------
 
-export async function getDbAuditLogs(): Promise<AuditLog[]> {
+export async function getDbAuditLogs(env: Env): Promise<AuditLog[]> {
+  const { db, pool } = getDb(env);
   try {
-    await seedDatabaseIfNeeded();
+    await seedDatabaseIfNeeded(env);
     const rows = await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp));
     return rows.map((r) => ({
       id: r.id,
@@ -429,15 +456,18 @@ export async function getDbAuditLogs(): Promise<AuditLog[]> {
       action: r.action,
       resource_type: r.resourceType,
       resource_id: r.resourceId,
-      details: r.details || '',
+      details: r.details || "",
     }));
   } catch (error) {
-    console.error('Failed to get audit logs:', error);
-    throw new Error('Database query failed. Please try again later.', { cause: error });
+    console.error("Failed to get audit logs:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error);
+  } finally {
+    await pool.end();
   }
 }
 
-export async function logDbAudit(log: AuditLog): Promise<void> {
+export async function logDbAudit(log: AuditLog, env: Env): Promise<void> {
+  const { db, pool } = getDb(env);
   try {
     await db.insert(auditLogs).values({
       id: log.id,
@@ -449,6 +479,8 @@ export async function logDbAudit(log: AuditLog): Promise<void> {
       details: log.details,
     });
   } catch (error) {
-    console.error('Failed to write audit log:', error);
+    console.error("Failed to write audit log:", error);
+  } finally {
+    await pool.end();
   }
 }

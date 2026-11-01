@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 export const Footer: React.FC = () => {
-  const { language, setCurrentView } = useStore();
+  const { language, setCurrentView, siteCustomization } = useStore();
 
   const handleNav = (view: StoreView) => {
     setCurrentView(view);
@@ -279,8 +279,17 @@ export const Footer: React.FC = () => {
             </div>
           </div>
 
-          <div className="text-center sm:text-end shrink-0">
-            <span>© 2026 {language === 'ar' ? 'شنطتي (Shantety) — جميع الحقوق محفوظة.' : 'Shantety Egypt. All rights reserved.'}</span>
+          <div className="text-center sm:text-end shrink-0 space-y-0.5">
+            <p className="font-bold text-stone-300">
+              {language === 'ar'
+                ? (siteCustomization?.footerCopyrightAr || 'تأسست علامة شنطتي في عام 2013 • جميع الحقوق محفوظة © 2013-2026')
+                : (siteCustomization?.footerCopyrightEn || 'Established 2013 • All Rights Reserved © 2013-2026')}
+            </p>
+            <p className="text-[10px] text-stone-400">
+              {language === 'ar'
+                ? 'دار شنطتي للأزياء والحقائب الراقية (Shantety) — صُنع بكل فخر في مصر'
+                : 'Shantety Egyptian Fashion House — Proudly Crafted in Egypt'}
+            </p>
           </div>
         </div>
       </div>

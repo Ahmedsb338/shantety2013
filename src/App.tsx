@@ -13,6 +13,7 @@ import { OrderConfirmationPage } from './components/OrderConfirmationPage';
 import { OrderTrackingPage } from './components/OrderTrackingPage';
 import { WishlistPage } from './components/WishlistPage';
 import { StaticPages } from './components/StaticPages';
+import { AuthPage } from './components/AuthPage';
 import { AdminDashboard } from './components/AdminDashboard';
 import { Footer } from './components/Footer';
 import { CompareFloatingBar } from './components/CompareFloatingBar';
@@ -212,6 +213,7 @@ const MainStoreContent: React.FC = () => {
         {currentView === 'checkout' && <CheckoutPage />}
         {currentView === 'order-confirmation' && <OrderConfirmationPage />}
         {currentView === 'order-tracking' && <OrderTrackingPage />}
+        {currentView === 'account' && <AuthPage />}
         {currentView === 'wishlist' && <WishlistPage />}
         {currentView === 'about' && <StaticPages type="about" />}
         {currentView === 'contact' && <StaticPages type="contact" />}

@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   Lock,
   ArrowLeftRight,
+  User,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
@@ -36,6 +37,7 @@ export const Header: React.FC = () => {
     setSelectedCategory,
     compareList,
     setIsCompareOpen,
+    categories,
   } = useStore();
   const { currentUser, isAuthenticated } = useAdminAuth();
 
@@ -158,26 +160,15 @@ export const Header: React.FC = () => {
               {language === 'ar' ? 'كل المنتجات' : 'All Catalog'}
             </button>
 
-            <button
-              onClick={() => navigateTo('shop', 'cat-bags')}
-              className="hover:text-[#E10600] transition-colors whitespace-nowrap cursor-pointer py-1"
-            >
-              {language === 'ar' ? 'حقائب اليد' : 'Handbags'}
-            </button>
-
-            <button
-              onClick={() => navigateTo('shop', 'cat-shoes')}
-              className="hover:text-[#E10600] transition-colors whitespace-nowrap cursor-pointer py-1"
-            >
-              {language === 'ar' ? 'الأحذية النسائية' : 'Shoes'}
-            </button>
-
-            <button
-              onClick={() => navigateTo('shop', 'cat-sets')}
-              className="hover:text-[#E10600] transition-colors whitespace-nowrap cursor-pointer py-1"
-            >
-              {language === 'ar' ? 'أطقم المناسبات' : 'Matching Sets'}
-            </button>
+            {categories.slice(0, 4).map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => navigateTo('shop', cat.id)}
+                className="hover:text-[#E10600] transition-colors whitespace-nowrap cursor-pointer py-1"
+              >
+                {language === 'ar' ? cat.name_ar : cat.name_en}
+              </button>
+            ))}
 
             <button
               onClick={() => navigateTo('order-tracking')}
@@ -289,39 +280,42 @@ export const Header: React.FC = () => {
               </span>
             </button>
 
-            {/* Admin Management Toggle */}
+            {/* Account / Sign In Trigger */}
             <button
-              onClick={() => navigateTo(currentView === 'admin' ? 'home' : 'admin')}
-              className={`hidden sm:flex py-1.5 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer items-center gap-1.5 ${
-                currentView === 'admin'
+              onClick={() => navigateTo('account')}
+              className={`flex py-1.5 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer items-center gap-1.5 ${
+                currentView === 'account'
                   ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                  : isAuthenticated
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                  : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
+                  : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
               }`}
-              title={
-                isAuthenticated
-                  ? (language === 'ar' ? `لوحة الإدارة (${currentUser?.roleTitleAr})` : `Manager (${currentUser?.roleTitleEn})`)
-                  : (language === 'ar' ? 'بوابة إدارة المتجر المشفرة' : 'Admin Portal (Restricted)')
-              }
+              title={language === 'ar' ? 'حسابي / تسجيل الدخول' : 'Account / Sign In'}
             >
-              {isAuthenticated ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-[#E10600]" />
-                  <span className="hidden xl:inline">
-                    {language === 'ar' ? 'الإدارة' : 'Manager'}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Lock className="w-3.5 h-3.5 text-stone-500" />
-                  <span className="hidden xl:inline">
-                    {language === 'ar' ? 'دخول الإدارة' : 'Admin Login'}
-                  </span>
-                </>
-              )}
+              <User className="w-3.5 h-3.5 text-[#E10600]" />
+              <span className="hidden sm:inline">
+                {isAuthenticated
+                  ? (language === 'ar' ? 'حسابي' : 'Account')
+                  : (language === 'ar' ? 'دخول / حساب' : 'Sign In')}
+              </span>
             </button>
+
+            {/* Admin Management Button - ONLY visible after successful login */}
+            {isAuthenticated && (
+              <button
+                onClick={() => navigateTo(currentView === 'admin' ? 'home' : 'admin')}
+                className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  currentView === 'admin'
+                    ? 'bg-[#E10600] text-white border-[#E10600] shadow-xs'
+                    : 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
+                }`}
+                title={language === 'ar' ? `لوحة الإدارة (${currentUser?.roleTitleAr})` : `Manager (${currentUser?.roleTitleEn})`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span className="hidden xl:inline">
+                  {language === 'ar' ? 'لوحة المدير' : 'Manager'}
+                </span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -464,34 +458,42 @@ export const Header: React.FC = () => {
             </button>
 
             <button
-              onClick={() => navigateTo('admin')}
-              className={`w-full text-start py-2.5 px-3 rounded-xl font-bold flex items-center justify-between mt-2 border ${
-                isAuthenticated
-                  ? 'bg-emerald-50 text-emerald-950 border-emerald-200'
-                  : 'bg-stone-100 text-stone-900 border-stone-200'
-              }`}
+              onClick={() => navigateTo('account')}
+              className="w-full text-start py-2.5 px-3 rounded-lg hover:bg-stone-50 flex items-center justify-between"
             >
               <div className="flex items-center gap-2">
-                {isAuthenticated ? (
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                ) : (
-                  <Lock className="w-4 h-4 text-stone-500" />
-                )}
-                <div className="flex flex-col">
-                  <span>{language === 'ar' ? 'لوحة تحكم الإدارة' : 'Commerce Manager'}</span>
-                  {isAuthenticated && currentUser && (
-                    <span className="text-[10px] text-emerald-700 font-normal">
-                      {language === 'ar' ? currentUser.roleTitleAr : currentUser.roleTitleEn}
-                    </span>
-                  )}
-                </div>
+                <User className="w-4 h-4 text-[#E10600]" />
+                <span>
+                  {isAuthenticated
+                    ? (language === 'ar' ? 'حسابي وبياناتي' : 'My Account')
+                    : (language === 'ar' ? 'تسجيل الدخول / إنشاء حساب' : 'Sign In / Register')}
+                </span>
               </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${
-                isAuthenticated ? 'bg-emerald-600 text-white' : 'bg-stone-900 text-white'
-              }`}>
-                {isAuthenticated ? 'Active' : 'Locked'}
-              </span>
+              {language === 'ar' ? <ChevronLeft className="w-4 h-4 text-stone-400" /> : <ChevronRight className="w-4 h-4 text-stone-400" />}
             </button>
+
+            {/* Admin Management Button - ONLY visible after login */}
+            {isAuthenticated && (
+              <button
+                onClick={() => navigateTo('admin')}
+                className="w-full text-start py-2.5 px-3 rounded-xl font-bold flex items-center justify-between mt-2 border bg-emerald-50 text-emerald-950 border-emerald-300"
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <div className="flex flex-col">
+                    <span>{language === 'ar' ? 'لوحة تحكم الإدارة' : 'Commerce Manager'}</span>
+                    {currentUser && (
+                      <span className="text-[10px] text-emerald-700 font-normal">
+                        {language === 'ar' ? currentUser.roleTitleAr : currentUser.roleTitleEn}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-emerald-600 text-white">
+                  Active
+                </span>
+              </button>
+            )}
           </div>
 
           {/* Branch Preview in Mobile Menu */}

@@ -4,9 +4,11 @@ import {
   Product,
   ProductVariant,
   Order,
+  SiteCustomization,
+  Category,
 } from '../types/ecommerce';
 import { StoreDatabase } from '../services/storeDatabase';
-import { OFFICIAL_BRAND } from '../data/initialData';
+import { OFFICIAL_BRAND, DEFAULT_SITE_CUSTOMIZATION } from '../data/initialData';
 
 export interface CartItem {
   variant_id: string;
@@ -78,6 +80,10 @@ interface StoreContextType {
   isComparing: (productId: string) => boolean;
   isCompareOpen: boolean;
   setIsCompareOpen: (open: boolean) => void;
+  siteCustomization: SiteCustomization;
+  updateSiteCustomization: (updates: Partial<SiteCustomization>) => void;
+  categories: Category[];
+  refreshCategories: () => void;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -125,6 +131,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       localStorage.setItem('shanaty_compare', JSON.stringify(compareList));
     } catch {}
   }, [compareList]);
+
+  const [categories, setCategories] = useState<Category[]>(() => StoreDatabase.getCategories());
+  const refreshCategories = () => {
+    setCategories(StoreDatabase.getCategories());
+  };
+
+  const [siteCustomization, setSiteCustomization] = useState<SiteCustomization>(() => {
+    return StoreDatabase.getSiteCustomization();
+  });
+
+  const updateSiteCustomization = (updates: Partial<SiteCustomization>) => {
+    const updated = { ...siteCustomization, ...updates };
+    setSiteCustomization(updated);
+    StoreDatabase.saveSiteCustomization(updated);
+    showToast(
+      language === 'ar' ? 'تم حفظ التعديلات وإعدادات الموقع بنجاح' : 'Site content updated successfully',
+      'success'
+    );
+  };
 
   const refreshProducts = () => {
     setProducts(StoreDatabase.getProducts());
@@ -358,6 +383,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         isComparing,
         isCompareOpen,
         setIsCompareOpen,
+        siteCustomization,
+        updateSiteCustomization,
+        categories,
+        refreshCategories,
       }}
     >
       {children}

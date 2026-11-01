@@ -8,6 +8,7 @@ export const ShopPage: React.FC = () => {
   const {
     language,
     products,
+    categories,
     selectedCategory,
     setSelectedCategory,
     searchQuery,
@@ -180,7 +181,7 @@ export const ShopPage: React.FC = () => {
               >
                 {language === 'ar' ? 'جميع الفئات' : 'All Categories'}
               </button>
-              {INITIAL_CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.id)}
@@ -305,7 +306,7 @@ export const ShopPage: React.FC = () => {
                   >
                     {language === 'ar' ? 'كافة الفئات' : 'All Categories'}
                   </button>
-                  {INITIAL_CATEGORIES.map((cat) => (
+                  {categories.map((cat) => (
                     <button
                       key={cat.id}
                       onClick={() => {

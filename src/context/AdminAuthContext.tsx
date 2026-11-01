@@ -55,6 +55,7 @@ interface AdminAuthContextType {
   currentUser: AdminUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  login: (email: string, passkey: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   loginWithPasskey: (passkey: string, name?: string) => { success: boolean; error?: string };
   logout: () => Promise<void>;
@@ -168,6 +169,36 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   };
 
+  const login = async (email: string, passkey: string): Promise<boolean> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanKey = passkey.trim();
+
+    if (MASTER_PASSKEYS.includes(cleanKey)) {
+      const adminProfile = AUTHORIZED_ADMINS[cleanEmail] || {
+        role: 'super_admin',
+        roleTitleAr: 'مالك المتجر والمشرف العام',
+        roleTitleEn: 'Store Owner & Super Admin',
+        isOwner: true,
+      };
+
+      const userObj: AdminUser = {
+        uid: 'admin-' + Date.now(),
+        email: cleanEmail.includes('@') ? cleanEmail : 'admin@shantety.com',
+        displayName: cleanEmail.includes('@') ? cleanEmail.split('@')[0] : 'مالك المتجر (Shantety Owner)',
+        role: adminProfile.role,
+        roleTitleAr: adminProfile.roleTitleAr,
+        roleTitleEn: adminProfile.roleTitleEn,
+        isOwner: adminProfile.isOwner,
+      };
+
+      setCurrentUser(userObj);
+      sessionStorage.setItem('shantety_admin_session', JSON.stringify(userObj));
+      return true;
+    }
+
+    return false;
+  };
+
   const logout = async () => {
     try {
       await signOut(auth);
@@ -196,6 +227,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         currentUser,
         isAuthenticated: !!currentUser,
         isLoading,
+        login,
         loginWithGoogle,
         loginWithPasskey,
         logout,

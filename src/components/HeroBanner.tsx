@@ -4,7 +4,7 @@ import { OFFICIAL_BRAND } from '../data/initialData';
 import { ArrowLeft, ArrowRight, ShieldCheck, Truck, Sparkles, Award } from 'lucide-react';
 
 export const HeroBanner: React.FC = () => {
-  const { language, setCurrentView, setSelectedCategory } = useStore();
+  const { language, setCurrentView, setSelectedCategory, siteCustomization } = useStore();
 
   const handleShopNow = () => {
     setSelectedCategory(null);
@@ -27,29 +27,27 @@ export const HeroBanner: React.FC = () => {
             {/* Editorial brand kicker */}
             <div className="inline-flex items-center gap-2 text-xs font-bold text-[#E10600] tracking-wider uppercase">
               <span className="w-2 h-2 rounded-full bg-[#E10600]" />
-              <span>{OFFICIAL_BRAND.name_ar} · {OFFICIAL_BRAND.name_en} Official 2026</span>
+              <span>
+                {language === 'ar'
+                  ? siteCustomization.heroBadgeAr || `${OFFICIAL_BRAND.name_ar} · 2026`
+                  : siteCustomization.heroBadgeEn || `${OFFICIAL_BRAND.name_en} · Official 2026`}
+              </span>
             </div>
 
             {/* Display Headline */}
             <h1 className="text-3xl sm:text-5xl lg:text-5xl font-black text-stone-900 leading-[1.15] tracking-tight">
               {language === 'ar' ? (
-                <>
-                  الفخامة والراحة في كل خطوة،{' '}
-                  <span className="text-[#E10600]">بلمسة شنطتي الخاصة.</span>
-                </>
+                <span>{siteCustomization.heroHeadlineAr}</span>
               ) : (
-                <>
-                  Crafted for Distinction,{' '}
-                  <span className="text-[#E10600]">Rooted in Egyptian Elegance.</span>
-                </>
+                <span>{siteCustomization.heroHeadlineEn}</span>
               )}
             </h1>
 
             {/* Subtext */}
             <p className="text-sm sm:text-base text-stone-600 max-w-xl leading-relaxed">
               {language === 'ar'
-                ? 'تشكيلة حقائب وأحذية نسائية راقية تجمع بين نقوش المونوغرام الأيقونية والجلود المحبوكة يدوياً لتلائم يومكِ ومناسباتكِ الخاصة في جميع محافظات مصر.'
-                : 'Explore curated women’s leather bags, handwoven loafers, and matching statement sets created with uncompromising craftsmanship and direct cash on delivery nationwide.'}
+                ? siteCustomization.heroSubtitleAr
+                : siteCustomization.heroSubtitleEn}
             </p>
 
             {/* Action Buttons */}
@@ -58,7 +56,11 @@ export const HeroBanner: React.FC = () => {
                 onClick={handleShopNow}
                 className="py-3.5 px-6 rounded-xl bg-[#E10600] hover:bg-[#C50500] text-white text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>{language === 'ar' ? 'تصفحي المجموعة الكاملة' : 'Explore All Pieces'}</span>
+                <span>
+                  {language === 'ar'
+                    ? siteCustomization.heroButtonTextAr || 'تصفحي المجموعة الكاملة'
+                    : siteCustomization.heroButtonTextEn || 'Explore All Pieces'}
+                </span>
                 {language === 'ar' ? (
                   <ArrowLeft className="w-4 h-4" />
                 ) : (
@@ -102,9 +104,9 @@ export const HeroBanner: React.FC = () => {
           {/* Right Visual Showcase (cols-5) */}
           <div className="lg:col-span-5 relative">
             <div className="relative aspect-4/3 sm:aspect-square rounded-3xl bg-white p-4 shadow-xl border border-stone-200/90 overflow-hidden group">
-              {/* Primary Featured Product Hero Image: Real uploaded Shanaty Bow bag */}
+              {/* Primary Featured Product Hero Image: Custom Hero Image / Container */}
               <img
-                src="/assets/aistudio/Generated_Image_October_30__2026_-_1_33AM__2__6b416ddc.png"
+                src={siteCustomization.heroImage || '/assets/aistudio/Generated_Image_October_30__2026_-_1_33AM__2__6b416ddc.png'}
                 alt="Shantety Signature Handbag"
                 className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-700 ease-out"
                 referrerPolicy="no-referrer"

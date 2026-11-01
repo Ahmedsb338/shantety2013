@@ -10,6 +10,8 @@ import {
   AuditLog,
   GovernorateShipping,
   ProductReview,
+  SiteCustomization,
+  VisitorMetrics,
 } from '../types/ecommerce';
 
 export interface Branch {
@@ -99,6 +101,60 @@ export const OFFICIAL_BRAND = {
   branches: businessInfo.branches,
   showroom_address_ar: businessInfo.branches[0].address_ar,
   showroom_address_en: businessInfo.branches[0].address_en,
+};
+
+export const DEFAULT_SITE_CUSTOMIZATION: SiteCustomization = {
+  heroHeadlineAr: 'الفخامة والراحة في كل خطوة، بلمسة شنطتي الخاصة.',
+  heroHeadlineEn: 'Crafted for Distinction, Rooted in Egyptian Elegance.',
+  heroSubtitleAr: 'تشكيلة حقائب وأحذية نسائية راقية تجمع بين نقوش المونوغرام الأيقونية والجلود المحبوكة يدوياً لتلائم يومكِ ومناسباتكِ الخاصة في جميع محافظات مصر.',
+  heroSubtitleEn: 'Explore curated women’s leather bags, handwoven loafers, and matching statement sets created with uncompromising craftsmanship and direct cash on delivery nationwide.',
+  heroBadgeAr: 'شنطتي · Shantety Official 2026',
+  heroBadgeEn: 'Shantety · Official Brand Collection',
+  heroImage: '/assets/aistudio/Generated_Image_October_30__2026_-_1_33AM__2__6b416ddc.png',
+  heroButtonTextAr: 'تصفحي المجموعة الكاملة',
+  heroButtonTextEn: 'Explore All Pieces',
+  topAnnouncementAr: '✨ شحن مجاني لكافة المحافظات للطلبات المتجاوزة 1,500 ج.م مع إمكانية المعاينة قبل الاستلام',
+  topAnnouncementEn: '✨ Free Nationwide Delivery on orders over 1,500 EGP with inspection upon delivery',
+  isAnnouncementEnabled: true,
+  phone: businessInfo.phone,
+  phoneDisplay: businessInfo.phoneDisplay,
+  whatsapp: businessInfo.whatsapp,
+  email: businessInfo.email,
+  branch1AddressAr: businessInfo.branches[0].address_ar,
+  branch1AddressEn: businessInfo.branches[0].address_en,
+  branch2AddressAr: businessInfo.branches[1].address_ar,
+  branch2AddressEn: businessInfo.branches[1].address_en,
+  footerCopyrightAr: 'تأسست علامة شنطتي في عام 2013 • جميع الحقوق محفوظة © 2013-2026 شنطتي (Shantety) — صُنع بكل فخر في مصر',
+  footerCopyrightEn: 'Established 2013 • All Rights Reserved © 2013-2026 Shantety — Proudly Crafted in Egypt',
+};
+
+export const INITIAL_VISITOR_METRICS: VisitorMetrics = {
+  activeVisitorsNow: 28,
+  todayVisitors: 1940,
+  weeklyVisitors: 13850,
+  todayPageviews: 6420,
+  avgSessionDuration: '3m 48s',
+  bounceRate: 26.4,
+  conversionRate: 4.8,
+  deviceBreakdown: { mobile: 84, desktop: 14, tablet: 2 },
+  trafficSources: [
+    { nameAr: 'إنستجرام وتيك توك (Social Media)', nameEn: 'Instagram & TikTok', percentage: 54, visits: 1048 },
+    { nameAr: 'واتساب والإحالات المباشرة (WhatsApp)', nameEn: 'WhatsApp & Direct Referrals', percentage: 24, visits: 465 },
+    { nameAr: 'محرك بحث جوجل (Google Organic)', nameEn: 'Google Search Organic', percentage: 14, visits: 272 },
+    { nameAr: 'زيارات مباشرة للنطاق (shantety.shop)', nameEn: 'Direct Domain Visits', percentage: 8, visits: 155 },
+  ],
+  funnel: [
+    { stepAr: 'زيارة المتجر الرئيسي (Home & Catalog)', stepEn: 'Store & Catalog Views', count: 1940, percentage: 100 },
+    { stepAr: 'معاينة تفاصيل المنتج (Product Details)', stepEn: 'Product Details Viewed', count: 1260, percentage: 65 },
+    { stepAr: 'إضافة لحقيبة التسوق (Added to Cart)', stepEn: 'Added to Shopping Bag', count: 590, percentage: 30.4 },
+    { stepAr: 'بدء الدفع وتأكيد الطلب (Checkout / Order)', stepEn: 'Completed Orders', count: 93, percentage: 4.8 },
+  ],
+  topViewedProducts: [
+    { productId: 'prod-monogram-bow-bag', nameAr: 'حقيبة شنطتي مونوغرام بالفيونكة', nameEn: 'Monogram Bow Tote Bag', views: 890, addToCartRate: 34.2 },
+    { productId: 'prod-woven-slipon-tan', nameAr: 'حذاء لوفرز هافان مجدول طبي', nameEn: 'Artisan Woven Tan Loafer', views: 640, addToCartRate: 29.5 },
+    { productId: 'prod-royal-burgundy-set', nameAr: 'طقم شنطتي الملكي النبيتي', nameEn: 'Royal Burgundy Ensemble', views: 510, addToCartRate: 22.8 },
+    { productId: 'prod-woven-tote-ivory', nameAr: 'حقيبة توت عاجية منسوجة', nameEn: 'Ivory Woven Tote Handbag', views: 420, addToCartRate: 21.0 },
+  ],
 };
 
 export const INITIAL_CATEGORIES: Category[] = [

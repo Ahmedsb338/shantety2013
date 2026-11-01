@@ -12,6 +12,9 @@ import {
   CustomerAddress,
   PaymentMethod,
   ProductReview,
+  SiteCustomization,
+  VisitorMetrics,
+  Category,
 } from '../types/ecommerce';
 import {
   INITIAL_PRODUCTS,
@@ -24,16 +27,22 @@ import {
   INITIAL_SIZES,
   EGYPTIAN_GOVERNORATES,
   INITIAL_REVIEWS,
+  DEFAULT_SITE_CUSTOMIZATION,
+  INITIAL_VISITOR_METRICS,
 } from '../data/initialData';
 
 const STORAGE_KEYS = {
   PRODUCTS: 'shanaty_db_products_v2',
   ORDERS: 'shanaty_db_orders_v2',
+  CATEGORIES: 'shanaty_db_categories_v2',
   SUPPLIERS: 'shanaty_db_suppliers_v2',
   PURCHASE_ORDERS: 'shanaty_db_purchase_orders_v2',
   MOVEMENTS: 'shanaty_db_movements_v2',
   AUDIT_LOGS: 'shanaty_db_audit_logs_v2',
   REVIEWS: 'shanaty_db_reviews_v2',
+  SITE_CUSTOMIZATION: 'shanaty_site_customization_v2',
+  VISITOR_METRICS: 'shanaty_visitor_metrics_v2',
+  CUSTOMERS: 'shanaty_db_customers_v2',
 };
 
 // Cryptographic token generator for secure order tracking
@@ -287,6 +296,23 @@ export class StoreDatabase {
     return orders.find(
       (o) => o.order_number.toUpperCase() === cleanNum && o.tracking_token === cleanTok
     );
+  }
+
+  static findOrderBySearch(query: string): Order | undefined {
+    const orders = this.getOrders();
+    const clean = query.trim().toUpperCase();
+    const cleanPhone = query.replace(/\D/g, '');
+
+    return orders.find((o) => {
+      if (o.order_number.toUpperCase() === clean) return true;
+      if (o.id.toUpperCase() === clean) return true;
+      if (o.tracking_token === query.trim()) return true;
+      if (o.tracking_number?.toUpperCase() === clean) return true;
+      if (cleanPhone.length >= 8 && o.customer_phone.replace(/\D/g, '').includes(cleanPhone)) return true;
+      // Partial match like 2601 for SHN-2601
+      if (clean.length >= 4 && o.order_number.toUpperCase().includes(clean)) return true;
+      return false;
+    });
   }
 
   static getOrderById(id: string): Order | undefined {
@@ -875,5 +901,191 @@ export class StoreDatabase {
       verifiedCount,
     };
   }
+
+  // SITE CMS CUSTOMIZATION
+  static getSiteCustomization(): SiteCustomization {
+    return this.load<SiteCustomization>(
+      STORAGE_KEYS.SITE_CUSTOMIZATION,
+      DEFAULT_SITE_CUSTOMIZATION
+    );
+  }
+
+  static saveSiteCustomization(
+    customization: SiteCustomization,
+    actor = 'admin@shantety.com'
+  ): void {
+    this.save(STORAGE_KEYS.SITE_CUSTOMIZATION, customization);
+    this.recordAudit(
+      actor,
+      'Store Admin',
+      'UPDATE_SITE_CMS',
+      'SiteCustomization',
+      'cms-settings',
+      'Updated homepage banner, addresses, and official business content'
+    );
+  }
+
+  // VISITOR METRICS & BEHAVIOR
+  static getVisitorMetrics(): VisitorMetrics {
+    return this.load<VisitorMetrics>(
+      STORAGE_KEYS.VISITOR_METRICS,
+      INITIAL_VISITOR_METRICS
+    );
+  }
+
+  // BULK PRODUCT IMPORT (WOOCOMMERCE COMPATIBLE)
+  static importAllProducts(
+    importedList: Product[],
+    actor = 'admin@shantety.com'
+  ): { successCount: number; errors: string[] } {
+    const existing = this.getProducts();
+    const errors: string[] = [];
+    let count = 0;
+
+    for (const item of importedList) {
+      if (!item.name_ar || !item.name_en || !item.base_price) {
+        errors.push(`تخطي منتج غير مكتمل: ${item.name_ar || item.name_en || 'بدون اسم'}`);
+        continue;
+      }
+
+      const existingIndex = existing.findIndex((p) => p.id === item.id || p.slug === item.slug);
+      if (existingIndex >= 0) {
+        existing[existingIndex] = {
+          ...existing[existingIndex],
+          ...item,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        existing.unshift({
+          ...item,
+          id: item.id || `prod-import-${Date.now()}-${count}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+      count++;
+    }
+
+    this.saveProducts(existing);
+    this.recordAudit(
+      actor,
+      'Store Admin',
+      'BULK_IMPORT_ALL_PRODUCTS',
+      'Catalog',
+      `Imported ${count} items`,
+      `Successfully imported/merged ${count} products into catalog.`
+    );
+
+    // Sync to PostgreSQL server
+    if (typeof window !== 'undefined') {
+      for (const prod of existing.slice(0, count)) {
+        fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(prod),
+        }).catch(() => {});
+      }
+    }
+
+    return { successCount: count, errors };
+  }
+
+  // CATEGORIES MANAGEMENT (NEW / EDIT / DELETE)
+  static getCategories(): Category[] {
+    return this.load<Category[]>(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
+  }
+
+  static saveCategories(categories: Category[]): void {
+    this.save(STORAGE_KEYS.CATEGORIES, categories);
+  }
+
+  static addCategory(category: Category, actor = 'admin@shantety.com'): Category {
+    const cats = this.getCategories();
+    const newCat = {
+      ...category,
+      id: category.id || `cat-${Date.now()}`,
+    };
+    cats.push(newCat);
+    this.saveCategories(cats);
+    this.recordAudit(
+      actor,
+      'Store Admin',
+      'ADD_CATEGORY',
+      'Category',
+      newCat.id,
+      `Created category "${newCat.name_ar}" (${newCat.name_en})`
+    );
+    return newCat;
+  }
+
+  static updateCategory(category: Category, actor = 'admin@shantety.com'): Category {
+    const cats = this.getCategories();
+    const idx = cats.findIndex((c) => c.id === category.id);
+    if (idx >= 0) {
+      cats[idx] = { ...category };
+    } else {
+      cats.push(category);
+    }
+    this.saveCategories(cats);
+    this.recordAudit(
+      actor,
+      'Store Admin',
+      'UPDATE_CATEGORY',
+      'Category',
+      category.id,
+      `Updated category "${category.name_ar}"`
+    );
+    return category;
+  }
+
+  static deleteCategory(categoryId: string, actor = 'admin@shantety.com'): boolean {
+    const cats = this.getCategories();
+    const filtered = cats.filter((c) => c.id !== categoryId);
+    if (filtered.length === cats.length) return false;
+    this.saveCategories(filtered);
+    this.recordAudit(
+      actor,
+      'Store Admin',
+      'DELETE_CATEGORY',
+      'Category',
+      categoryId,
+      `Deleted category ${categoryId}`
+    );
+    return true;
+  }
+
+  // CUSTOMER AUTH & PROFILES
+  static getCustomers(): any[] {
+    return this.load<any[]>(STORAGE_KEYS.CUSTOMERS, [
+      {
+        id: 'cust-1',
+        name: 'سارة عبد الرحمن',
+        phone: '01012345678',
+        email: 'sara@example.com',
+        governorate: 'الإسكندرية',
+        created_at: '2026-10-20T10:00:00Z',
+      },
+    ]);
+  }
+
+  static registerCustomer(customer: {
+    name: string;
+    phone: string;
+    email: string;
+    governorate: string;
+    password?: string;
+  }): any {
+    const customers = this.getCustomers();
+    const newCust = {
+      id: `cust-${Date.now()}`,
+      ...customer,
+      created_at: new Date().toISOString(),
+    };
+    customers.push(newCust);
+    this.save(STORAGE_KEYS.CUSTOMERS, customers);
+    return newCust;
+  }
 }
+
+
 
