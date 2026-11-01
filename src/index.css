@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary: #E10600;
+  --color-primary-hover: #C50500;
+  --color-primary-light: #FFF1F0;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  letter-spacing: -0.011em;
+}
+
+html[dir="rtl"], html[dir="rtl"] body {
+  font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, sans-serif;
+  letter-spacing: normal;
+}
+
+/* Tabular figures for pricing and quantities */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom scrollbars for tables and lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
