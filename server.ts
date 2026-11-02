@@ -1,17 +1,6 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
-import { getOrCreateUser } from './src/db/users.ts';
-import {
-  getDbProducts,
-  getDbProductById,
-  upsertDbProduct,
-  getDbOrders,
-  createDbOrder,
-  updateDbOrderStatus,
-  getDbAuditLogs,
-  seedDatabaseIfNeeded,
-} from './src/db/queries.ts';
+import { authoritativeStore } from './src/server/commerceService';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -20,137 +9,257 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
-  // API Health & Info
+  // ─── API Health & Info ───────────────────────────────────────────────────
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', engine: 'PostgreSQL (Cloud SQL)', brand: 'Shantety' });
+    res.json({
+      status: 'ok',
+      engine: 'Supabase PostgreSQL (Migrated from Firebase)',
+      brand: 'Shantety - شنطتي',
+      architecture: 'Cloudflare Worker & Server-Authoritative API',
+      timestamp: new Date().toISOString(),
+    });
   });
 
-  // User Authentication sync
-  app.post('/api/auth/sync', requireAuth, async (req: AuthRequest, res) => {
+  // ─── Public Products API (Safe fields, stock quantities masked) ──────────
+  app.get('/api/products', (_req, res) => {
     try {
-      const uid = req.user!.uid;
-      const email = req.user!.email || '';
-      const name = req.user!.name || '';
-      const user = await getOrCreateUser(uid, email, name);
-      res.json(user);
+      const publicProducts = authoritativeStore.getPublicProducts();
+      res.json(publicProducts);
     } catch (error: any) {
-      console.error('Failed to sync user:', error);
-      res.status(500).json({ error: 'Failed to sync user' });
-    }
-  });
-
-  // Products API
-  app.get('/api/products', async (_req, res) => {
-    try {
-      const prods = await getDbProducts();
-      res.json(prods);
-    } catch (error: any) {
-      console.error('Error fetching products:', error);
+      console.error('Error fetching public products:', error);
       res.status(500).json({ error: error.message || 'Failed to fetch products' });
     }
   });
 
-  app.get('/api/products/:id', async (req, res) => {
+  app.get('/api/products/:id', (req, res) => {
     try {
-      const prod = await getDbProductById(req.params.id);
+      const prod = authoritativeStore.getProductById(req.params.id);
       if (!prod) {
         return res.status(404).json({ error: 'Product not found' });
       }
       res.json(prod);
     } catch (error: any) {
-      console.error('Error fetching product:', error);
-      res.status(500).json({ error: error.message || 'Failed to fetch product' });
+      res.status(500).json({ error: error.message });
     }
   });
 
-  app.post('/api/products', async (req, res) => {
+  // Admin products (with internal stock numbers)
+  app.get('/api/admin/products', (req, res) => {
+    const prods = authoritativeStore.getAdminProducts();
+    res.json(prods);
+  });
+
+  app.post('/api/products', (req, res) => {
     try {
-      await upsertDbProduct(req.body);
-      res.json({ success: true });
+      const product = req.body;
+      const saved = authoritativeStore.upsertProduct(product, req.headers['x-admin-email'] as string || 'admin');
+      res.json({ success: true, product: saved });
     } catch (error: any) {
-      console.error('Error saving product:', error);
       res.status(500).json({ error: error.message || 'Failed to save product' });
     }
   });
 
-  // Orders API
-  app.get('/api/orders', async (_req, res) => {
+  app.delete('/api/products/:id', (req, res) => {
     try {
-      const ords = await getDbOrders();
-      res.json(ords);
+      const success = authoritativeStore.deleteProduct(req.params.id, req.headers['x-admin-email'] as string || 'admin');
+      res.json({ success });
     } catch (error: any) {
-      console.error('Error fetching orders:', error);
-      res.status(500).json({ error: error.message || 'Failed to fetch orders' });
+      res.status(500).json({ error: error.message });
     }
   });
 
-  app.post('/api/orders', async (req, res) => {
+  // ─── Authoritative Server-Side Checkout ──────────────────────────────────
+  app.post('/api/checkout', (req, res) => {
     try {
-      const ord = await createDbOrder(req.body);
-      res.status(201).json(ord);
+      const {
+        customer_name,
+        customer_phone,
+        customer_email,
+        customer_id,
+        shipping_address,
+        payment_method,
+        notes,
+        cartItems,
+      } = req.body;
+
+      const result = authoritativeStore.processCheckout({
+        customer_name,
+        customer_phone,
+        customer_email,
+        customer_id,
+        shipping_address,
+        payment_method: payment_method || 'cod',
+        notes,
+        cartItems: cartItems || [],
+      });
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+
+      res.status(201).json(result);
     } catch (error: any) {
-      console.error('Error creating order:', error);
-      res.status(500).json({ error: error.message || 'Failed to create order' });
+      console.error('Checkout error:', error);
+      res.status(500).json({
+        success: false,
+        error_ar: 'حدث خطأ تقني أثناء معالجة الطلب. يرجى المحاولة مرة أخرى.',
+        error_en: error.message || 'Internal server checkout failure',
+      });
     }
   });
 
-  app.patch('/api/orders/:id/status', async (req, res) => {
+  // Backward compatibility alias for /api/orders
+  app.post('/api/orders', (req, res) => {
     try {
-      const { status, trackingNumber } = req.body;
-      await updateDbOrderStatus(req.params.id, status, trackingNumber);
-      res.json({ success: true });
+      const body = req.body;
+      const cartItems = (body.items || body.rawCartItems || []).map((it: any) => ({
+        variant_id: it.variant_id || it.variant?.id,
+        quantity: it.quantity || 1,
+      }));
+
+      const result = authoritativeStore.processCheckout({
+        customer_name: body.customer_name,
+        customer_phone: body.customer_phone,
+        customer_email: body.customer_email,
+        shipping_address: body.shipping_address,
+        payment_method: body.payment_method || 'cod',
+        notes: body.notes,
+        cartItems,
+      });
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+
+      res.status(201).json(result.order);
     } catch (error: any) {
-      console.error('Error updating order status:', error);
-      res.status(500).json({ error: error.message || 'Failed to update order status' });
+      res.status(500).json({ error: error.message });
     }
   });
 
-  // Audit Logs API
-  app.get('/api/audit-logs', async (_req, res) => {
+  // ─── Secure Guest Tracking (Rate-limited, Hash verification, Zero PII) ────
+  app.post('/api/orders/track', (req, res) => {
     try {
-      const logs = await getDbAuditLogs();
-      res.json(logs);
+      const { order_number, tracking_token } = req.body;
+      const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'ip';
+
+      const result = authoritativeStore.trackOrder(order_number, tracking_token, clientIp);
+      if (!result.success) {
+        return res.status(404).json(result);
+      }
+
+      res.json(result);
     } catch (error: any) {
-      console.error('Error fetching audit logs:', error);
-      res.status(500).json({ error: error.message || 'Failed to fetch audit logs' });
+      res.status(500).json({ error: error.message });
     }
   });
 
-  // Customer Reviews API
-  let memoryReviews: any[] = [];
+  // ─── Admin Orders Management ─────────────────────────────────────────────
+  app.get('/api/orders', (_req, res) => {
+    try {
+      res.json(authoritativeStore['state'].orders);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch('/api/orders/:id/status', (req, res) => {
+    try {
+      const { status, carrier, trackingNumber } = req.body;
+      const actor = (req.headers['x-admin-email'] as string) || 'admin@shantety.com';
+
+      const result = authoritativeStore.updateOrderStatus(
+        req.params.id,
+        status,
+        carrier,
+        trackingNumber,
+        actor
+      );
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ─── Admin Role Verification & Memberships ────────────────────────────────
+  app.post('/api/admin/login', (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password required' });
+    }
+
+    const verification = authoritativeStore.verifyAdminRole(email);
+    if (!verification.isAuthorized) {
+      return res.status(403).json({
+        error: 'This account is not authorized for administrative access.',
+      });
+    }
+
+    // Role verified
+    res.json({
+      success: true,
+      user: {
+        email,
+        role: verification.role,
+        isOwner: verification.isOwner,
+        displayName: email.split('@')[0],
+      },
+    });
+  });
+
+  app.get('/api/admin/memberships', (_req, res) => {
+    res.json(authoritativeStore.getAdminMemberships());
+  });
+
+  app.post('/api/admin/memberships', (req, res) => {
+    const { targetUserId, role, isActive } = req.body;
+    const callerEmail = (req.headers['x-admin-email'] as string) || '';
+
+    const result = authoritativeStore.manageAdminMembership(
+      callerEmail,
+      targetUserId,
+      role,
+      isActive
+    );
+
+    if (!result.success) {
+      return res.status(403).json(result);
+    }
+
+    res.json(result);
+  });
+
+  // ─── Audit Logs ──────────────────────────────────────────────────────────
+  app.get('/api/audit-logs', (_req, res) => {
+    res.json(authoritativeStore.getAuditLogs());
+  });
+
+  // ─── Customer Reviews ────────────────────────────────────────────────────
   app.get('/api/reviews', (req, res) => {
     const { productId } = req.query;
-    if (productId) {
-      return res.json(memoryReviews.filter((r) => r.product_id === productId));
-    }
-    res.json(memoryReviews);
+    res.json(authoritativeStore.getReviews(productId as string | undefined));
   });
 
   app.post('/api/reviews', (req, res) => {
     try {
-      const newReview = {
-        ...req.body,
-        id: req.body.id || `rev-${Date.now()}`,
-        date: req.body.date || new Date().toISOString(),
-        helpful_count: req.body.helpful_count || 0,
-      };
-      memoryReviews.unshift(newReview);
-      res.json({ success: true, review: newReview });
+      const review = authoritativeStore.addReview(req.body);
+      res.json({ success: true, review });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
   app.post('/api/reviews/:id/helpful', (req, res) => {
-    const rev = memoryReviews.find((r) => r.id === req.params.id);
-    if (rev) {
-      rev.helpful_count = (rev.helpful_count || 0) + 1;
-      return res.json({ success: true, helpful_count: rev.helpful_count });
-    }
-    res.json({ success: true, helpful_count: 1 });
+    const count = authoritativeStore.voteHelpful(req.params.id);
+    res.json({ success: true, helpful_count: count });
   });
 
-  // AI Store Intelligence & Analytics API (powered by Gemini 3.8 Flash)
+  // ─── AI Store Intelligence & Analytics API ───────────────────────────────
   app.post('/api/ai/analytics', async (req, res) => {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
@@ -160,9 +269,9 @@ async function startServer() {
         try {
           const { GoogleGenAI } = await import('@google/genai');
           const ai = new GoogleGenAI({ apiKey });
-          const prompt = `You are the Lead E-Commerce Strategy and AI Data Scientist for "Shantety" (شنطتي), a premier Egyptian bags, shoes, and fashion accessories brand with physical branches in Abu El Matamir, Beheira, Egypt.
+          const prompt = `You are the Lead E-Commerce Strategy and AI Data Scientist for "Shantety" (شنطتي), premier Egyptian bags and shoes brand.
 Store metrics: Total Orders: ${ordersCount}, Gross Revenue: ${totalRevenue} EGP, Average Order Value: ${aov} EGP.
-Provide a sharp, executive intelligence report in JSON format with exactly these keys:
+Provide a sharp executive intelligence report in JSON format with exactly these keys:
 {
   "executiveSummaryAr": "string in Arabic",
   "executiveSummaryEn": "string in English",
@@ -174,8 +283,7 @@ Provide a sharp, executive intelligence report in JSON format with exactly these
   "pricingStrategyEn": ["bullet 1", "bullet 2"],
   "geographicInsightsAr": ["bullet 1", "bullet 2"],
   "geographicInsightsEn": ["bullet 1", "bullet 2"]
-}
-Output valid JSON only.`;
+}`;
 
           const response = await ai.models.generateContent({
             model: 'gemini-3.8-flash',
@@ -190,11 +298,11 @@ Output valid JSON only.`;
             return res.json({ success: true, report });
           }
         } catch (genAiError) {
-          console.warn('Gemini AI call fallback:', genAiError);
+          console.warn('Gemini AI fallback:', genAiError);
         }
       }
 
-      // High-fidelity fallback based on real metrics
+      // Default strategic report based on real metrics
       res.json({
         success: true,
         report: {
@@ -244,12 +352,7 @@ Output valid JSON only.`;
     }
   });
 
-  // Auto seed on boot
-  seedDatabaseIfNeeded().catch((err) => {
-    console.warn('Initial seeding attempt in background:', err.message);
-  });
-
-  // Vite dev middleware or static serving in production
+  // ─── Vite Dev Middleware & Static Serving ────────────────────────────────
   if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },

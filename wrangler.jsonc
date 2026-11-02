@@ -8,20 +8,6 @@
     "directory": "./dist",
     "binding": "ASSETS"
   },
-  "kv_namespaces": [
-    {
-      "binding": "REVIEWS",
-      "id": "<KV_NAMESPACE_ID>"
-    }
-  ],
-  "hyperdrive": {
-    "bindings": [
-      {
-        "name": "HYPERDRIVE",
-        "id": "<HYPERDRIVE_ID>"
-      }
-    ]
-  },
   "observability": {
     "enabled": true
   }

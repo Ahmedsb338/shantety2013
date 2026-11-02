@@ -1,6 +1,7 @@
 import React from 'react';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { AdminAuthProvider } from './context/AdminAuthContext';
+import { CustomerAuthProvider } from './context/CustomerAuthContext';
 import { Header } from './components/Header';
 import { HeroBanner } from './components/HeroBanner';
 import { FeaturedCategories } from './components/FeaturedCategories';
@@ -235,9 +236,11 @@ const MainStoreContent: React.FC = () => {
 export default function App() {
   return (
     <AdminAuthProvider>
-      <StoreProvider>
-        <MainStoreContent />
-      </StoreProvider>
+      <CustomerAuthProvider>
+        <StoreProvider>
+          <MainStoreContent />
+        </StoreProvider>
+      </CustomerAuthProvider>
     </AdminAuthProvider>
   );
 }

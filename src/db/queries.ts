@@ -28,10 +28,10 @@ import {
 } from "../data/initialData.ts";
 import { Product, Order, Supplier, PurchaseOrder, AuditLog, InventoryMovement } from "../types/ecommerce.ts";
 
-type Env = { HYPERDRIVE: Hyperdrive };
+type Env = any;
 
 // Auto-seed database if empty
-export async function seedDatabaseIfNeeded(env: Env) {
+export async function seedDatabaseIfNeeded(env?: Env) {
   const { db, pool } = getDb(env);
   try {
     const existingProducts = await db.select({ id: products.id }).from(products).limit(1);
@@ -193,7 +193,7 @@ export async function seedDatabaseIfNeeded(env: Env) {
 
 // ---------------- PRODUCTS ----------------
 
-export async function getDbProducts(env: Env): Promise<Product[]> {
+export async function getDbProducts(env?: Env): Promise<Product[]> {
   const { db, pool } = getDb(env);
   try {
     await seedDatabaseIfNeeded(env);
@@ -247,7 +247,7 @@ export async function getDbProducts(env: Env): Promise<Product[]> {
   }
 }
 
-export async function getDbProductById(id: string, env: Env): Promise<Product | null> {
+export async function getDbProductById(id: string, env?: Env): Promise<Product | null> {
   const { db, pool } = getDb(env);
   try {
     const list = await getDbProducts(env);
@@ -260,7 +260,7 @@ export async function getDbProductById(id: string, env: Env): Promise<Product | 
   }
 }
 
-export async function upsertDbProduct(product: Product, env: Env): Promise<void> {
+export async function upsertDbProduct(product: Product, env?: Env): Promise<void> {
   const { db, pool } = getDb(env);
   try {
     await db.insert(products).values({
@@ -345,7 +345,7 @@ export async function upsertDbProduct(product: Product, env: Env): Promise<void>
 
 // ---------------- ORDERS ----------------
 
-export async function getDbOrders(env: Env): Promise<Order[]> {
+export async function getDbOrders(env?: Env): Promise<Order[]> {
   const { db, pool } = getDb(env);
   try {
     await seedDatabaseIfNeeded(env);
@@ -382,7 +382,7 @@ export async function getDbOrders(env: Env): Promise<Order[]> {
   }
 }
 
-export async function createDbOrder(order: Order, env: Env): Promise<Order> {
+export async function createDbOrder(order: Order, env?: Env): Promise<Order> {
   const { db, pool } = getDb(env);
   try {
     await db.insert(orders).values({
@@ -443,7 +443,7 @@ export async function updateDbOrderStatus(
 
 // ---------------- AUDIT LOGS ----------------
 
-export async function getDbAuditLogs(env: Env): Promise<AuditLog[]> {
+export async function getDbAuditLogs(env?: Env): Promise<AuditLog[]> {
   const { db, pool } = getDb(env);
   try {
     await seedDatabaseIfNeeded(env);
@@ -460,13 +460,13 @@ export async function getDbAuditLogs(env: Env): Promise<AuditLog[]> {
     }));
   } catch (error) {
     console.error("Failed to get audit logs:", error);
-    throw new Error("Database query failed. Please try again later.", { cause: error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
   } finally {
     await pool.end();
   }
 }
 
-export async function logDbAudit(log: AuditLog, env: Env): Promise<void> {
+export async function logDbAudit(log: AuditLog, env?: Env): Promise<void> {
   const { db, pool } = getDb(env);
   try {
     await db.insert(auditLogs).values({

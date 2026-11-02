@@ -71,7 +71,7 @@ export const CheckoutPage: React.FC = () => {
     );
   }
 
-  const handleSubmitOrder = (e: React.FormEvent) => {
+  const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setIsSubmitting(true);
@@ -81,40 +81,56 @@ export const CheckoutPage: React.FC = () => {
       quantity: item.quantity,
     }));
 
-    const result = StoreDatabase.createOrder({
-      customer_name: fullName,
-      customer_phone: phone,
-      customer_email: email,
-      shipping_address: {
-        id: 'addr-' + Date.now(),
-        customer_name: fullName,
-        phone,
-        governorate: selectedGov,
-        city,
-        street_address: streetAddress,
-        building_floor: buildingFloor,
-        notes: deliveryNotes,
-        is_default: true,
-      },
-      payment_method: paymentMethod,
-      notes: deliveryNotes,
-      rawCartItems,
-    });
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer_name: fullName.trim(),
+          customer_phone: phone.trim(),
+          customer_email: email.trim() || undefined,
+          shipping_address: {
+            id: 'addr-' + Date.now(),
+            customer_name: fullName.trim(),
+            phone: phone.trim(),
+            governorate: selectedGov,
+            city: city.trim(),
+            street_address: streetAddress.trim(),
+            building_floor: buildingFloor.trim() || undefined,
+            notes: deliveryNotes.trim() || undefined,
+            is_default: true,
+          },
+          payment_method: paymentMethod,
+          notes: deliveryNotes.trim() || undefined,
+          cartItems: rawCartItems,
+        }),
+      });
 
-    setIsSubmitting(false);
+      const result = await response.json();
+      setIsSubmitting(false);
 
-    if (!result.success || !result.order) {
-      const err = language === 'ar' ? result.error_ar : result.error_en;
-      setErrorMessage(err || 'Failed to place order');
-      showToast(err || 'Order submission error', 'error');
-      return;
+      if (!response.ok || !result.success || !result.order) {
+        const err = language === 'ar' ? result.error_ar : result.error_en;
+        setErrorMessage(err || (language === 'ar' ? 'فشل إتمام الطلب' : 'Failed to place order'));
+        showToast(err || 'Order submission error', 'error');
+        return;
+      }
+
+      // Success: Clear cart, set active order, and navigate to confirmation
+      clearCart();
+      setActiveOrder(result.order);
+      setCurrentView('order-confirmation');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err: any) {
+      setIsSubmitting(false);
+      const networkMsg = language === 'ar'
+        ? 'حدث خطأ في الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت.'
+        : 'Network error communicating with server.';
+      setErrorMessage(networkMsg);
+      showToast(networkMsg, 'error');
     }
-
-    // Success: Clear cart, set active order, and navigate to confirmation
-    clearCart();
-    setActiveOrder(result.order);
-    setCurrentView('order-confirmation');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (

@@ -23,43 +23,94 @@ export const OrderTrackingPage: React.FC = () => {
   const [searchedOrder, setSearchedOrder] = useState<Order | null>(activeOrder || null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleTrack = (e?: React.FormEvent, directNumber?: string) => {
+  const handleTrack = async (e?: React.FormEvent, directNumber?: string) => {
     if (e) e.preventDefault();
     setErrorMsg(null);
 
     const queryNum = (directNumber || orderNumber).trim();
 
     if (!queryNum) {
-      setErrorMsg(language === 'ar' ? 'يرجى إدخال رقم الطلب أو رقم الهاتف' : 'Please enter your order or phone number');
+      setErrorMsg(language === 'ar' ? 'يرجى إدخال رقم الطلب بشكل صحيح (مثال: SHN-2601)' : 'Please enter your order number (e.g. SHN-2601)');
       return;
     }
 
-    // 1. If tracking token is provided, verify against token first
-    if (trackingToken.trim()) {
-      const orderWithToken = StoreDatabase.getOrderByNumberAndToken(queryNum, trackingToken.trim());
-      if (orderWithToken) {
-        setSearchedOrder(orderWithToken);
+    try {
+      const response = await fetch('/api/orders/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_number: queryNum,
+          tracking_token: trackingToken.trim(),
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success || !result.data) {
+        setErrorMsg(
+          language === 'ar'
+            ? result.error_ar || 'لم يتم العثور على شحنة مطابقة للبيانات المدخلة. يرجى التأكد من رقم الطلب ورمز الأمان.'
+            : result.error_en || 'Order not found or invalid security credentials. Please verify your order number and token.'
+        );
+        setSearchedOrder(null);
         return;
       }
-    }
 
-    // 2. Direct search by Order Number, Phone, or Carrier AWB
-    const order = StoreDatabase.findOrderBySearch(queryNum);
-    if (!order) {
-      setErrorMsg(
-        language === 'ar'
-          ? 'لم يتم العثور على طلب مطابق لرقم الطلب أو الهاتف المدخل. يرجى التأكد من كتابة الرقم بشكل صحيح (مثال: SHN-2601).'
-          : 'No order matched this order number or phone. Please verify your input (e.g. SHN-2601).'
-      );
-      setSearchedOrder(null);
-      return;
+      // Convert tracking response to format expected by UI
+      const trackData = result.data;
+      setSearchedOrder({
+        id: trackData.order_number,
+        order_number: trackData.order_number,
+        tracking_token: trackingToken.trim(),
+        customer_name: 'عميل شنطتي الموقر',
+        customer_phone: '',
+        shipping_address: {
+          id: 'addr-track',
+          customer_name: 'عميل شنطتي',
+          phone: '',
+          governorate: trackData.destination_governorate,
+          city: trackData.destination_city,
+          street_address: trackData.destination_city,
+          is_default: true,
+        },
+        items: trackData.items.map((it: any, idx: number) => ({
+          id: `item-${idx}`,
+          order_id: trackData.order_number,
+          product_id: '',
+          variant_id: '',
+          sku: '',
+          product_name_ar: it.product_name_ar,
+          product_name_en: it.product_name_en,
+          color_name_ar: it.color_name_ar,
+          color_name_en: it.color_name_en,
+          size_name_ar: it.size_name_ar,
+          size_name_en: it.size_name_en,
+          unit_price: it.unit_price || 0,
+          quantity: it.quantity,
+          total_price: (it.unit_price || 0) * it.quantity,
+          image: it.image,
+        })),
+        subtotal: 0,
+        shipping_fee: 0,
+        discount: 0,
+        total: 0,
+        currency: 'EGP',
+        status: trackData.status,
+        payment_status: 'paid',
+        payment_method: 'cod',
+        shipping_provider: trackData.shipping_provider,
+        tracking_number: trackData.tracking_number,
+        created_at: trackData.created_at,
+        updated_at: trackData.created_at,
+      });
+    } catch (err: any) {
+      setErrorMsg(language === 'ar' ? 'فشل الاتصال بخادم التتبع' : 'Failed to reach tracking server');
     }
-
-    setSearchedOrder(order);
   };
 
   const loadSampleOrder = (num: string) => {
     setOrderNumber(num);
+    setTrackingToken('');
     handleTrack(undefined, num);
   };
 

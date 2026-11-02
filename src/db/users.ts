@@ -1,15 +1,11 @@
-// ─── src/db/users.ts (محوّل لـ Workers + Hyperdrive) ──────────────
-
-import { getDb } from "./index.ts";
-import { users } from "./schema.ts";
-
-type Env = { HYPERDRIVE: Hyperdrive };
+import { getDb } from "./index";
+import { users } from "./schema";
 
 export async function getOrCreateUser(
   uid: string,
   email: string,
   displayName: string | undefined,
-  env: Env
+  env?: any
 ) {
   const { db, pool } = getDb(env);
   try {
