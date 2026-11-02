@@ -225,6 +225,26 @@ export async function runSecurityAndBusinessTests() {
     `Audit trail length: ${auditLogs.length} entries`
   );
 
+  // Test 12: Tracking token hashing BYTEA and hex cross-compatibility
+  const sampleToken = 'tk_9f8d7e6c5b4a3210';
+  const shaHex = hashTrackingToken(sampleToken);
+  const { matchesTokenHash, hashTrackingTokenBytea } = await import('../src/server/commerceService');
+  const byteaHex = hashTrackingTokenBytea(sampleToken);
+  const rawBytes = Buffer.from(shaHex, 'hex');
+
+  const matchesHex = matchesTokenHash(sampleToken, shaHex);
+  const matchesBytea = matchesTokenHash(sampleToken, byteaHex);
+  const matchesBuffer = matchesTokenHash(sampleToken, rawBytes);
+  const rejectsWrong = !matchesTokenHash('tk_wrong_token', shaHex);
+
+  assert(
+    'Tracking token hashes match both hex strings, PostgreSQL \\x BYTEA, and raw Byte Buffers',
+    matchesHex && matchesBytea && matchesBuffer && rejectsWrong,
+    'matchesTokenHash correctly validates hex, bytea, and buffer while rejecting mismatches',
+    `matchesHex=${matchesHex}, matchesBytea=${matchesBytea}, matchesBuffer=${matchesBuffer}, rejectsWrong=${rejectsWrong}`,
+    `Validated bytea prefix '${byteaHex.slice(0, 8)}...' and 32-byte binary digest`
+  );
+
   console.log('\n--- TEST EXECUTION SUMMARY ---');
   let passCount = 0;
   for (const r of testResults) {
@@ -239,3 +259,4 @@ export async function runSecurityAndBusinessTests() {
 }
 
 runSecurityAndBusinessTests();
+

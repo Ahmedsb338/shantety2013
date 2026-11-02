@@ -23,14 +23,20 @@ export const OrderTrackingPage: React.FC = () => {
   const [searchedOrder, setSearchedOrder] = useState<Order | null>(activeOrder || null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleTrack = async (e?: React.FormEvent, directNumber?: string) => {
+  const handleTrack = async (e?: React.FormEvent, directNumber?: string, directToken?: string) => {
     if (e) e.preventDefault();
     setErrorMsg(null);
 
     const queryNum = (directNumber || orderNumber).trim();
+    const tokenVal = (directToken !== undefined ? directToken : trackingToken).trim();
 
     if (!queryNum) {
       setErrorMsg(language === 'ar' ? 'يرجى إدخال رقم الطلب بشكل صحيح (مثال: SHN-2601)' : 'Please enter your order number (e.g. SHN-2601)');
+      return;
+    }
+
+    if (!tokenVal) {
+      setErrorMsg(language === 'ar' ? 'يرجى إدخال رمز الأمان السري للطلب (tk_...)' : 'Please enter the secret tracking token (tk_...)');
       return;
     }
 
@@ -40,7 +46,7 @@ export const OrderTrackingPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_number: queryNum,
-          tracking_token: trackingToken.trim(),
+          tracking_token: tokenVal,
         }),
       });
 
@@ -108,10 +114,10 @@ export const OrderTrackingPage: React.FC = () => {
     }
   };
 
-  const loadSampleOrder = (num: string) => {
+  const loadSampleOrder = (num: string, token: string) => {
     setOrderNumber(num);
-    setTrackingToken('');
-    handleTrack(undefined, num);
+    setTrackingToken(token);
+    handleTrack(undefined, num, token);
   };
 
   const getStepStatus = (step: 'pending' | 'processing' | 'shipped' | 'delivered', current: string) => {
@@ -167,14 +173,14 @@ export const OrderTrackingPage: React.FC = () => {
           </span>
           <button
             type="button"
-            onClick={() => loadSampleOrder('SHN-2601')}
+            onClick={() => loadSampleOrder('SHN-2601', 'tk_bosta_2601_verified')}
             className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 font-mono text-[11px] rounded-lg border border-stone-300 font-bold cursor-pointer transition-colors"
           >
             SHN-2601 (بوسطة - جاري الشحن)
           </button>
           <button
             type="button"
-            onClick={() => loadSampleOrder('SHN-2602')}
+            onClick={() => loadSampleOrder('SHN-2602', 'tk_mylerz_2602_secure')}
             className="px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 font-mono text-[11px] rounded-lg border border-stone-300 font-bold cursor-pointer transition-colors"
           >
             SHN-2602 (مايلرز - تم التسليم)

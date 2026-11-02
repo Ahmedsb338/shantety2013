@@ -128,12 +128,16 @@ export interface OrderItem {
   quantity: number;
   total_price: number;
   image: string;
+  selected_options?: Record<string, any>;
 }
 
 export interface Order {
   id: string;
   order_number: string;
-  tracking_token: string; // Secure token required to view order details
+  tracking_token?: string; // Secure plaintext token (returned only at creation time)
+  tracking_token_hash?: string; // Stored SHA-256 hash or BYTEA in Supabase
+  user_id?: string; // Foreign key to auth.users(id) - live Supabase DB column
+  customer_id?: string; // Backward compatibility alias
   customer_name: string;
   customer_phone: string;
   customer_email?: string;
@@ -251,6 +255,35 @@ export interface SiteCustomization {
   branch2AddressEn: string;
   footerCopyrightAr?: string;
   footerCopyrightEn?: string;
+  aboutStoryAr?: string;
+  aboutStoryEn?: string;
+  faqList?: Array<{ questionAr: string; questionEn: string; answerAr: string; answerEn: string }>;
+}
+
+export type AdminRole = 'super_admin' | 'store_manager' | 'order_staff';
+
+export interface AdminMembership {
+  user_id: string; // Primary key in live Supabase table (references auth.users.id)
+  role: AdminRole;
+  is_active: boolean;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+  // Optional convenience fields for display
+  id?: string;
+  email?: string;
+  is_owner?: boolean;
+}
+
+export interface CmsSectionItem {
+  id: string;
+  key: string;
+  title_ar: string;
+  title_en: string;
+  content: Record<string, any>;
+  is_published: boolean;
+  updated_at: string;
+  updated_by?: string;
 }
 
 export interface VisitorMetrics {

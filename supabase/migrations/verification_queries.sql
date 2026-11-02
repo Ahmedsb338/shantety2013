@@ -63,13 +63,29 @@ FROM pg_proc
 WHERE proname = 'manage_admin_membership';
 -- EXPECTED: prosecdef = true, proconfig contains search_path
 
--- 5. Verify lookup_guest_order function exists and is security definer
-SELECT proname, prosecdef, proconfig
-FROM pg_proc
-WHERE proname = 'lookup_guest_order';
--- EXPECTED: prosecdef = true
+-- 5. Verify orders.tracking_token_hash data type is BYTEA
+SELECT table_name, column_name, data_type, udt_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'orders'
+  AND column_name = 'tracking_token_hash';
+-- EXPECTED: data_type = 'bytea'
 
--- 6. Check that direct browser write privileges are revoked from audit_logs
+-- 6. Verify track_guest_order and lookup_guest_order functions exist and are SECURITY DEFINER
+SELECT proname, prosecdef, proconfig, pg_get_function_arguments(oid) as arguments
+FROM pg_proc
+WHERE proname IN ('track_guest_order', 'lookup_guest_order')
+  AND pronamespace = 'public'::regnamespace;
+-- EXPECTED: prosecdef = true for both functions
+
+-- 7. Verify manage_admin_membership signature (uuid, text, boolean) and owner protection
+SELECT proname, prosecdef, pg_get_function_arguments(oid) as arguments
+FROM pg_proc
+WHERE proname = 'manage_admin_membership'
+  AND pronamespace = 'public'::regnamespace;
+-- EXPECTED: arguments = 'target_user_id uuid, new_role text, new_status boolean', prosecdef = true
+
+-- 8. Check that direct browser write privileges are revoked from audit_logs
 SELECT grantee, privilege_type
 FROM information_schema.table_privileges
 WHERE table_schema = 'public'
@@ -77,3 +93,4 @@ WHERE table_schema = 'public'
   AND grantee IN ('PUBLIC', 'anon', 'authenticated')
   AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE');
 -- EXPECTED: 0 rows returned!
+

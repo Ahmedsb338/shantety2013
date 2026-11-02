@@ -298,24 +298,7 @@ export const Header: React.FC = () => {
               </span>
             </button>
 
-            {/* Admin Management Button - ONLY visible after successful login */}
-            {isAuthenticated && (
-              <button
-                onClick={() => navigateTo(currentView === 'admin' ? 'home' : 'admin')}
-                className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5 ${
-                  currentView === 'admin'
-                    ? 'bg-[#E10600] text-white border-[#E10600] shadow-xs'
-                    : 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
-                }`}
-                title={language === 'ar' ? `لوحة الإدارة (${currentUser?.roleTitleAr})` : `Manager (${currentUser?.roleTitleEn})`}
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span className="hidden xl:inline">
-                  {language === 'ar' ? 'لوحة المدير' : 'Manager'}
-                </span>
-              </button>
-            )}
+            {/* Customer Header Ends */}
           </div>
         </div>
 
@@ -472,29 +455,9 @@ export const Header: React.FC = () => {
               {language === 'ar' ? <ChevronLeft className="w-4 h-4 text-stone-400" /> : <ChevronRight className="w-4 h-4 text-stone-400" />}
             </button>
 
-            {/* Admin Management Button - ONLY visible after login */}
-            {isAuthenticated && (
-              <button
-                onClick={() => navigateTo('admin')}
-                className="w-full text-start py-2.5 px-3 rounded-xl font-bold flex items-center justify-between mt-2 border bg-emerald-50 text-emerald-950 border-emerald-300"
-              >
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <div className="flex flex-col">
-                    <span>{language === 'ar' ? 'لوحة تحكم الإدارة' : 'Commerce Manager'}</span>
-                    {currentUser && (
-                      <span className="text-[10px] text-emerald-700 font-normal">
-                        {language === 'ar' ? currentUser.roleTitleAr : currentUser.roleTitleEn}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded font-mono bg-emerald-600 text-white">
-                  Active
-                </span>
-              </button>
-            )}
           </div>
+
+          {/* Branch Preview in Mobile Menu */}
 
           {/* Branch Preview in Mobile Menu */}
           <div className="p-4 bg-stone-50 border-t border-stone-200 text-xs text-stone-600 space-y-2">

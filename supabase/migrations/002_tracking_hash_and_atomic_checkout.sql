@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
   id text PRIMARY KEY,
   order_number text UNIQUE NOT NULL,
   customer_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  tracking_token_hash text NOT NULL, -- SHA-256 hexadecimal hash
+  tracking_token_hash bytea NOT NULL, -- Stored as BYTEA (SHA-256 binary digest)
   customer_name text NOT NULL,
   customer_phone text NOT NULL,
   customer_email text,
@@ -42,6 +42,17 @@ CREATE TABLE IF NOT EXISTS public.orders (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Defensive migration check if table already existed without tracking_token_hash
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'tracking_token_hash'
+  ) THEN
+    ALTER TABLE public.orders ADD COLUMN tracking_token_hash bytea;
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON public.orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_number ON public.orders(order_number);
@@ -127,11 +138,12 @@ CREATE POLICY order_items_customer_read ON public.order_items
   USING (order_id IN (SELECT id FROM public.orders WHERE customer_id = auth.uid()));
 
 -- ----------------------------------------------------------------------------
--- 5. FUNCTION: SECURE GUEST TRACKING LOOKUP (ZERO PII LEAKAGE)
+-- 5. FUNCTION: public.track_guest_order(text) [EXISTING SUPABASE RPC COMPATIBILITY]
+-- Takes plaintext tracking token, hashes with SHA-256, matches BYTEA tracking_token_hash.
+-- ZERO PII LEAKAGE: Never returns customer phone, recipient email, or full address.
 -- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.lookup_guest_order(
-  p_order_number text,
-  p_token_hash text
+CREATE OR REPLACE FUNCTION public.track_guest_order(
+  p_tracking_token text
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -142,27 +154,29 @@ DECLARE
   v_order record;
   v_items jsonb;
   v_history jsonb;
+  v_token_hash bytea;
 BEGIN
-  -- Strict input verification
-  IF p_order_number IS NULL OR p_token_hash IS NULL OR length(p_order_number) < 4 OR length(p_token_hash) < 32 THEN
+  IF p_tracking_token IS NULL OR length(trim(p_tracking_token)) < 6 THEN
     RETURN NULL;
   END IF;
 
-  -- Hash verification
+  -- Compute SHA-256 digest (bytea) of the plaintext tracking token
+  v_token_hash := digest(trim(p_tracking_token), 'sha256');
+
   SELECT id, order_number, status, shipping_provider, tracking_number,
          shipping_address->>'governorate' as gov,
          shipping_address->>'city' as city,
          created_at
   INTO v_order
   FROM public.orders
-  WHERE upper(trim(order_number)) = upper(trim(p_order_number))
-    AND tracking_token_hash = p_token_hash;
+  WHERE tracking_token_hash = v_token_hash
+  LIMIT 1;
 
   IF NOT FOUND THEN
     RETURN NULL;
   END IF;
 
-  -- Load safe item snapshots (NO customer details, NO recipient phone, NO notes)
+  -- Load safe item snapshots
   SELECT jsonb_agg(
     jsonb_build_object(
       'product_name_ar', product_name_ar,
@@ -205,7 +219,99 @@ BEGIN
 END;
 $$;
 
--- Grant execution to public/anon for guest tracking
+GRANT EXECUTE ON FUNCTION public.track_guest_order(text) TO PUBLIC, anon, authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 6. FUNCTION: public.lookup_guest_order(text, text) [COMPATIBILITY ALIAS]
+-- Takes order_number and token_hash (hex string or bytea hex), returns non-PII tracking data.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.lookup_guest_order(
+  p_order_number text,
+  p_token_hash text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_order record;
+  v_items jsonb;
+  v_history jsonb;
+  v_clean_hex text;
+  v_target_bytes bytea;
+BEGIN
+  IF p_order_number IS NULL OR p_token_hash IS NULL OR length(p_order_number) < 4 OR length(p_token_hash) < 16 THEN
+    RETURN NULL;
+  END IF;
+
+  v_clean_hex := lower(trim(p_token_hash));
+  IF starts_with(v_clean_hex, '\x') THEN
+    v_clean_hex := substr(v_clean_hex, 3);
+  END IF;
+
+  BEGIN
+    v_target_bytes := decode(v_clean_hex, 'hex');
+  EXCEPTION WHEN OTHERS THEN
+    v_target_bytes := NULL;
+  END;
+
+  SELECT id, order_number, status, shipping_provider, tracking_number,
+         shipping_address->>'governorate' as gov,
+         shipping_address->>'city' as city,
+         created_at
+  INTO v_order
+  FROM public.orders
+  WHERE upper(trim(order_number)) = upper(trim(p_order_number))
+    AND (
+      (v_target_bytes IS NOT NULL AND tracking_token_hash = v_target_bytes)
+      OR encode(tracking_token_hash, 'hex') = v_clean_hex
+    );
+
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT jsonb_agg(
+    jsonb_build_object(
+      'product_name_ar', product_name_ar,
+      'product_name_en', product_name_en,
+      'color_name_ar', color_name_ar,
+      'color_name_en', color_name_en,
+      'size_name_ar', size_name_ar,
+      'size_name_en', size_name_en,
+      'quantity', quantity,
+      'image', image
+    )
+  )
+  INTO v_items
+  FROM public.order_items
+  WHERE order_id = v_order.id;
+
+  SELECT jsonb_agg(
+    jsonb_build_object(
+      'status', status,
+      'created_at', created_at
+    ) ORDER BY created_at ASC
+  )
+  INTO v_history
+  FROM public.order_status_history
+  WHERE order_id = v_order.id;
+
+  RETURN jsonb_build_object(
+    'order_number', v_order.order_number,
+    'status', v_order.status,
+    'shipping_provider', v_order.shipping_provider,
+    'tracking_number', v_order.tracking_number,
+    'destination_governorate', v_order.gov,
+    'destination_city', v_order.city,
+    'created_at', v_order.created_at,
+    'items', coalesce(v_items, '[]'::jsonb),
+    'history', coalesce(v_history, '[]'::jsonb)
+  );
+END;
+$$;
+
 GRANT EXECUTE ON FUNCTION public.lookup_guest_order(text, text) TO PUBLIC, anon, authenticated;
 
 COMMIT;

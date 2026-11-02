@@ -234,9 +234,49 @@ async function startServer() {
     res.json(result);
   });
 
+  // ─── Content Management System (CMS) API ────────────────────────────────
+  app.get('/api/cms', (_req, res) => {
+    try {
+      res.json(authoritativeStore.getCmsSections());
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/cms/:key', (req, res) => {
+    const sec = authoritativeStore.getCmsSection(req.params.key);
+    if (!sec) return res.status(404).json({ error: 'Section not found' });
+    res.json(sec);
+  });
+
+  app.put('/api/cms/:key', (req, res) => {
+    try {
+      const actor = (req.headers['x-admin-email'] as string) || 'admin@shantety.shop';
+      const result = authoritativeStore.updateCmsSection(req.params.key, req.body, actor);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/customization', (_req, res) => {
+    res.json(authoritativeStore.getSiteCustomization());
+  });
+
+  app.put('/api/customization', (req, res) => {
+    try {
+      const actor = (req.headers['x-admin-email'] as string) || 'admin@shantety.shop';
+      const updated = authoritativeStore.updateSiteCustomization(req.body, actor);
+      res.json({ success: true, customization: updated });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Audit Logs ──────────────────────────────────────────────────────────
-  app.get('/api/audit-logs', (_req, res) => {
-    res.json(authoritativeStore.getAuditLogs());
+  app.get('/api/audit-logs', (req, res) => {
+    const callerRole = (req.headers['x-admin-role'] as string) || 'super_admin';
+    res.json(authoritativeStore.getAuditLogs(callerRole));
   });
 
   // ─── Customer Reviews ────────────────────────────────────────────────────

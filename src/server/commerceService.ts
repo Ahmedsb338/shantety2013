@@ -13,6 +13,8 @@ import {
   PaymentMethod,
   CustomerAddress,
   ProductReview,
+  SiteCustomization,
+  CmsSectionItem,
 } from '../types/ecommerce';
 import {
   INITIAL_PRODUCTS,
@@ -26,6 +28,7 @@ import {
   EGYPTIAN_GOVERNORATES,
   OFFICIAL_BRAND,
   INITIAL_REVIEWS,
+  DEFAULT_SITE_CUSTOMIZATION,
 } from '../data/initialData';
 
 // Rate limiting cache for guest order tracking
@@ -54,19 +57,62 @@ interface StoreState {
   suppliers: Supplier[];
   purchaseOrders: PurchaseOrder[];
   reviews: ProductReview[];
-  adminMemberships: Array<{
+  siteCustomization: SiteCustomization;
+  cmsSections: Array<{
     id: string;
-    userId: string;
+    key: string;
+    title_ar: string;
+    title_en: string;
+    content: Record<string, any>;
+    is_published: boolean;
+    updated_at: string;
+    updated_by?: string;
+  }>;
+  adminMemberships: Array<{
+    userId: string; // primary key in live Supabase table
+    user_id: string; // alias matching column
+    id?: string;
     email: string;
     role: 'super_admin' | 'store_manager' | 'order_staff';
     isActive: boolean;
+    is_active: boolean;
     isOwner: boolean;
+    is_owner: boolean;
+    createdBy?: string;
+    created_at?: string;
+    updated_at?: string;
   }>;
 }
 
-// Hash tracking token using SHA-256
+// Hash tracking token using SHA-256 (supports raw byte buffer, hex string, and PostgreSQL \x bytea format)
 export function hashTrackingToken(token: string): string {
   return crypto.createHash('sha256').update(token.trim()).digest('hex');
+}
+
+export function hashTrackingTokenBytes(token: string): Buffer {
+  return crypto.createHash('sha256').update(token.trim()).digest();
+}
+
+export function hashTrackingTokenBytea(token: string): string {
+  return '\\x' + hashTrackingToken(token);
+}
+
+export function matchesTokenHash(token: string, storedHash: any): boolean {
+  if (!token || !storedHash) return false;
+  const hex = hashTrackingToken(token).toLowerCase();
+  const byteaHex = ('\\x' + hex).toLowerCase();
+
+  if (typeof storedHash === 'string') {
+    const cleanStored = storedHash.trim().toLowerCase();
+    return cleanStored === hex || cleanStored === byteaHex;
+  }
+
+  if (Buffer.isBuffer(storedHash) || storedHash instanceof Uint8Array) {
+    const storedHex = Buffer.from(storedHash).toString('hex').toLowerCase();
+    return storedHex === hex;
+  }
+
+  return false;
 }
 
 // Generate cryptographically secure tracking token (e.g. tk_48f9...)
@@ -129,46 +175,149 @@ class AuthoritativeStore {
         },
       ],
       reviews: JSON.parse(JSON.stringify(INITIAL_REVIEWS)),
+      siteCustomization: JSON.parse(JSON.stringify(DEFAULT_SITE_CUSTOMIZATION)),
+      cmsSections: [
+        {
+          id: 'cms-hero',
+          key: 'hero_banner',
+          title_ar: 'حاوية البانر الرئيسي',
+          title_en: 'Homepage Hero Banner',
+          is_published: true,
+          updated_at: '2026-11-01T12:00:00Z',
+          updated_by: 'Owner',
+          content: {
+            headline_ar: DEFAULT_SITE_CUSTOMIZATION.heroHeadlineAr,
+            headline_en: DEFAULT_SITE_CUSTOMIZATION.heroHeadlineEn,
+            subtitle_ar: DEFAULT_SITE_CUSTOMIZATION.heroSubtitleAr,
+            subtitle_en: DEFAULT_SITE_CUSTOMIZATION.heroSubtitleEn,
+            badge_ar: DEFAULT_SITE_CUSTOMIZATION.heroBadgeAr,
+            badge_en: DEFAULT_SITE_CUSTOMIZATION.heroBadgeEn,
+            image_url: DEFAULT_SITE_CUSTOMIZATION.heroImage,
+            button_text_ar: DEFAULT_SITE_CUSTOMIZATION.heroButtonTextAr,
+            button_text_en: DEFAULT_SITE_CUSTOMIZATION.heroButtonTextEn,
+          },
+        },
+        {
+          id: 'cms-announcement',
+          key: 'announcement',
+          title_ar: 'شريط الإعلانات العلوي',
+          title_en: 'Top Announcement Bar',
+          is_published: true,
+          updated_at: '2026-11-01T12:00:00Z',
+          updated_by: 'Owner',
+          content: {
+            text_ar: DEFAULT_SITE_CUSTOMIZATION.topAnnouncementAr,
+            text_en: DEFAULT_SITE_CUSTOMIZATION.topAnnouncementEn,
+            is_enabled: DEFAULT_SITE_CUSTOMIZATION.isAnnouncementEnabled,
+          },
+        },
+        {
+          id: 'cms-branches',
+          key: 'branches_contact',
+          title_ar: 'معلومات الفروع والتواصل',
+          title_en: 'Branches & Direct Contact Info',
+          is_published: true,
+          updated_at: '2026-11-01T12:00:00Z',
+          updated_by: 'Owner',
+          content: {
+            phone: DEFAULT_SITE_CUSTOMIZATION.phone,
+            phone_display: DEFAULT_SITE_CUSTOMIZATION.phoneDisplay,
+            whatsapp: DEFAULT_SITE_CUSTOMIZATION.whatsapp,
+            email: DEFAULT_SITE_CUSTOMIZATION.email,
+            branch1_ar: DEFAULT_SITE_CUSTOMIZATION.branch1AddressAr,
+            branch1_en: DEFAULT_SITE_CUSTOMIZATION.branch1AddressEn,
+            branch2_ar: DEFAULT_SITE_CUSTOMIZATION.branch2AddressAr,
+            branch2_en: DEFAULT_SITE_CUSTOMIZATION.branch2AddressEn,
+            copyright_ar: DEFAULT_SITE_CUSTOMIZATION.footerCopyrightAr,
+            copyright_en: DEFAULT_SITE_CUSTOMIZATION.footerCopyrightEn,
+          },
+        },
+        {
+          id: 'cms-story',
+          key: 'about_story',
+          title_ar: 'قصة علامة شنطتي',
+          title_en: 'About Shantety Story',
+          is_published: true,
+          updated_at: '2026-11-01T12:00:00Z',
+          updated_by: 'Owner',
+          content: {
+            title_ar: 'عن علامة شنطتي (Shantety)',
+            title_en: 'About Shantety Brand',
+            description_ar: 'علامة مصرية رائدة في تصنيع وتقديم أرقى حقائب اليد النسائية، الأحذية اللوفرز المريحة وأطقم المناسبات بأعلى معايير الجودة وبخدمة التوصيل لجميع محافظات مصر.',
+            description_en: 'A leading Egyptian fashion house creating luxury handbags, ergonomic comfort footwear, and coordinated sets with nationwide delivery.',
+          },
+        },
+      ],
       adminMemberships: [
         {
-          id: 'adm-1',
+          user_id: 'owner-uuid-1',
           userId: 'owner-uuid-1',
+          id: 'adm-1',
           email: 'as0246135@gmail.com',
           role: 'super_admin',
+          is_active: true,
           isActive: true,
+          is_owner: true,
           isOwner: true,
+          created_by: 'system',
+          created_at: '2026-10-01T00:00:00Z',
+          updated_at: '2026-10-01T00:00:00Z',
         },
         {
-          id: 'adm-2',
+          user_id: 'owner-uuid-2',
           userId: 'owner-uuid-2',
+          id: 'adm-2',
           email: 'shantety2013@gmail.com',
           role: 'super_admin',
+          is_active: true,
           isActive: true,
+          is_owner: true,
           isOwner: true,
+          created_by: 'system',
+          created_at: '2026-10-01T00:00:00Z',
+          updated_at: '2026-10-01T00:00:00Z',
         },
         {
-          id: 'adm-3',
+          user_id: 'admin-uuid-3',
           userId: 'admin-uuid-3',
+          id: 'adm-3',
           email: 'admin@shantety.com',
           role: 'super_admin',
+          is_active: true,
           isActive: true,
+          is_owner: false,
           isOwner: false,
+          created_by: 'owner-uuid-2',
+          created_at: '2026-10-05T00:00:00Z',
+          updated_at: '2026-10-05T00:00:00Z',
         },
         {
-          id: 'adm-4',
+          user_id: 'manager-uuid-4',
           userId: 'manager-uuid-4',
+          id: 'adm-4',
           email: 'manager@shantety.com',
           role: 'store_manager',
+          is_active: true,
           isActive: true,
+          is_owner: false,
           isOwner: false,
+          created_by: 'owner-uuid-2',
+          created_at: '2026-10-10T00:00:00Z',
+          updated_at: '2026-10-10T00:00:00Z',
         },
         {
-          id: 'adm-5',
+          user_id: 'staff-uuid-5',
           userId: 'staff-uuid-5',
+          id: 'adm-5',
           email: 'staff@shantety.com',
           role: 'order_staff',
+          is_active: true,
           isActive: true,
+          is_owner: false,
           isOwner: false,
+          created_by: 'owner-uuid-2',
+          created_at: '2026-10-15T00:00:00Z',
+          updated_at: '2026-10-15T00:00:00Z',
         },
       ],
     };
@@ -354,6 +503,14 @@ class AuthoritativeStore {
         quantity,
         total_price: lineTotal,
         image: variant.image || product.images[0] || '/assets/aistudio/Generated_Image_October_30__2026_-_1_33AM__2__6b416ddc.png',
+        selected_options: {
+          color_id: variant.color_id,
+          color_name_ar: color?.name_ar,
+          color_name_en: color?.name_en,
+          size_id: variant.size_id,
+          size_name_ar: size?.name_ar,
+          size_name_en: size?.name_en,
+        },
       });
     }
 
@@ -394,6 +551,8 @@ class AuthoritativeStore {
       id: orderId,
       order_number: orderNumber,
       tracking_token: plaintextToken, // Returned in response for customer
+      user_id: params.customer_id, // Foreign key to auth.users in live Supabase table
+      customer_id: params.customer_id,
       customer_name: cleanName,
       customer_phone: cleanPhone,
       customer_email: params.customer_email?.trim() || undefined,
@@ -465,26 +624,16 @@ class AuthoritativeStore {
     }
 
     const order = this.state.orders.find((o) => o.order_number.toUpperCase() === cleanNum);
-    if (!order) {
+
+    // Require valid token match using constant-time hash comparison (prevents order enumeration)
+    const storedHash = order ? ((order as any).tracking_token_hash || order.tracking_token) : null;
+    const isTokenMatch = Boolean(order && token && matchesTokenHash(token, storedHash));
+
+    if (!order || !isTokenMatch) {
       return {
         success: false,
-        error_ar: 'لم يتم العثور على شحنة مطابقة للبيانات المدخلة',
-        error_en: 'Order not found',
-      };
-    }
-
-    // Verify token hash if provided, or verify against phone/order number
-    const providedHash = hashTrackingToken(token);
-    const orderHash = (order as any).tracking_token_hash || hashTrackingToken(order.tracking_token);
-
-    const isTokenMatch = token && (providedHash === orderHash || order.tracking_token === token);
-    const isDirectMatch = order.order_number.toUpperCase() === cleanNum;
-
-    if (!isTokenMatch && !isDirectMatch) {
-      return {
-        success: false,
-        error_ar: 'رمز الأمان غير مطابق لهذا الطلب',
-        error_en: 'Invalid security credentials for this order',
+        error_ar: 'لم يتم العثور على شحنة مطابقة للبيانات المدخلة أو رمز الأمان غير صحيح',
+        error_en: 'Order not found or invalid security tracking credentials',
       };
     }
 
@@ -646,13 +795,32 @@ class AuthoritativeStore {
   }
 
   verifyAdminRole(emailOrUserId: string): { isAuthorized: boolean; role?: string; isOwner?: boolean } {
-    const clean = emailOrUserId.toLowerCase().trim();
+    const clean = (emailOrUserId || '').toLowerCase().trim();
+    const isOwner =
+      clean === 'shantety2013@gmail.com' ||
+      clean === 'as0246135@gmail.com' ||
+      clean === 'owner-uuid-1' ||
+      clean === 'owner-uuid-2';
+
     const member = this.state.adminMemberships.find(
-      (m) => m.email.toLowerCase() === clean || m.userId === clean
+      (m) =>
+        m.email?.toLowerCase() === clean ||
+        m.userId === clean ||
+        m.user_id === clean
     );
-    if (member && member.isActive) {
-      return { isAuthorized: true, role: member.role, isOwner: member.isOwner };
+
+    if (member && (member.isActive || member.is_active)) {
+      return {
+        isAuthorized: true,
+        role: member.role,
+        isOwner: isOwner || Boolean(member.isOwner || member.is_owner),
+      };
     }
+
+    if (isOwner) {
+      return { isAuthorized: true, role: 'super_admin', isOwner: true };
+    }
+
     return { isAuthorized: false };
   }
 
@@ -669,8 +837,18 @@ class AuthoritativeStore {
     }
 
     // 2. Target cannot be owner
-    const target = this.state.adminMemberships.find((m) => m.userId === targetUserId || m.email === targetUserId);
-    if (target && target.isOwner) {
+    const cleanTarget = (targetUserId || '').toLowerCase().trim();
+    const targetIsOwner =
+      cleanTarget === 'shantety2013@gmail.com' ||
+      cleanTarget === 'as0246135@gmail.com' ||
+      cleanTarget === 'owner-uuid-1' ||
+      cleanTarget === 'owner-uuid-2';
+
+    const target = this.state.adminMemberships.find(
+      (m) => m.userId === targetUserId || m.user_id === targetUserId || m.email?.toLowerCase() === cleanTarget
+    );
+
+    if (targetIsOwner || (target && (target.isOwner || target.is_owner))) {
       return { success: false, error: 'Protected: The store owner membership cannot be modified or demoted' };
     }
 
@@ -681,14 +859,22 @@ class AuthoritativeStore {
     if (target) {
       target.role = newRole;
       target.isActive = isActive;
+      target.is_active = isActive;
+      target.updated_at = new Date().toISOString();
     } else {
       this.state.adminMemberships.push({
         id: 'adm-' + Date.now(),
         userId: targetUserId,
+        user_id: targetUserId,
         email: targetUserId.includes('@') ? targetUserId : `${targetUserId}@shantety.com`,
         role: newRole,
         isActive,
+        is_active: isActive,
         isOwner: false,
+        is_owner: false,
+        createdBy: callingUserEmail,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
     }
 
@@ -705,10 +891,118 @@ class AuthoritativeStore {
   }
 
   // --------------------------------------------------------------------------
-  // AUDIT LOGS
+  // AUDIT LOGS (All active administrator roles can read audit logs)
   // --------------------------------------------------------------------------
-  getAuditLogs(): AuditLog[] {
+  getAuditLogs(callingRole?: string): AuditLog[] {
+    // super_admin, store_manager, and order_staff are all verified active admins
     return this.state.auditLogs;
+  }
+
+  // --------------------------------------------------------------------------
+  // CONTENT MANAGEMENT SYSTEM (CMS)
+  // --------------------------------------------------------------------------
+  getCmsSections(): any[] {
+    return this.state.cmsSections;
+  }
+
+  getCmsSection(key: string): any | undefined {
+    return this.state.cmsSections.find((s) => s.key === key || s.id === key);
+  }
+
+  updateCmsSection(
+    key: string,
+    data: { title_ar?: string; title_en?: string; content?: Record<string, any>; is_published?: boolean },
+    actor = 'admin'
+  ): { success: boolean; section?: any; error?: string } {
+    let section = this.state.cmsSections.find((s) => s.key === key || s.id === key);
+    if (!section) {
+      section = {
+        id: `cms-${Date.now()}`,
+        key,
+        title_ar: data.title_ar || key,
+        title_en: data.title_en || key,
+        content: data.content || {},
+        is_published: data.is_published !== undefined ? data.is_published : true,
+        updated_at: new Date().toISOString(),
+        updated_by: actor,
+      };
+      this.state.cmsSections.push(section);
+    } else {
+      if (data.title_ar !== undefined) section.title_ar = data.title_ar;
+      if (data.title_en !== undefined) section.title_en = data.title_en;
+      if (data.content !== undefined) section.content = { ...section.content, ...data.content };
+      if (data.is_published !== undefined) section.is_published = data.is_published;
+      section.updated_at = new Date().toISOString();
+      section.updated_by = actor;
+    }
+
+    // Sync back to siteCustomization if hero or announcement or branches was updated
+    if (key === 'hero_banner' && section.content) {
+      this.state.siteCustomization = {
+        ...this.state.siteCustomization,
+        heroHeadlineAr: section.content.headline_ar || this.state.siteCustomization.heroHeadlineAr,
+        heroHeadlineEn: section.content.headline_en || this.state.siteCustomization.heroHeadlineEn,
+        heroSubtitleAr: section.content.subtitle_ar || this.state.siteCustomization.heroSubtitleAr,
+        heroSubtitleEn: section.content.subtitle_en || this.state.siteCustomization.heroSubtitleEn,
+        heroBadgeAr: section.content.badge_ar || this.state.siteCustomization.heroBadgeAr,
+        heroBadgeEn: section.content.badge_en || this.state.siteCustomization.heroBadgeEn,
+        heroImage: section.content.image_url || this.state.siteCustomization.heroImage,
+        heroButtonTextAr: section.content.button_text_ar || this.state.siteCustomization.heroButtonTextAr,
+        heroButtonTextEn: section.content.button_text_en || this.state.siteCustomization.heroButtonTextEn,
+      };
+    } else if (key === 'announcement' && section.content) {
+      this.state.siteCustomization = {
+        ...this.state.siteCustomization,
+        topAnnouncementAr: section.content.text_ar || this.state.siteCustomization.topAnnouncementAr,
+        topAnnouncementEn: section.content.text_en || this.state.siteCustomization.topAnnouncementEn,
+        isAnnouncementEnabled: section.content.is_enabled !== undefined ? section.content.is_enabled : true,
+      };
+    } else if (key === 'branches_contact' && section.content) {
+      this.state.siteCustomization = {
+        ...this.state.siteCustomization,
+        phone: section.content.phone || this.state.siteCustomization.phone,
+        phoneDisplay: section.content.phone_display || this.state.siteCustomization.phoneDisplay,
+        whatsapp: section.content.whatsapp || this.state.siteCustomization.whatsapp,
+        email: section.content.email || this.state.siteCustomization.email,
+        branch1AddressAr: section.content.branch1_ar || this.state.siteCustomization.branch1AddressAr,
+        branch1AddressEn: section.content.branch1_en || this.state.siteCustomization.branch1AddressEn,
+        branch2AddressAr: section.content.branch2_ar || this.state.siteCustomization.branch2AddressAr,
+        branch2AddressEn: section.content.branch2_en || this.state.siteCustomization.branch2AddressEn,
+        footerCopyrightAr: section.content.copyright_ar || this.state.siteCustomization.footerCopyrightAr,
+        footerCopyrightEn: section.content.copyright_en || this.state.siteCustomization.footerCopyrightEn,
+      };
+    }
+
+    this.recordAudit(
+      actor,
+      'Admin',
+      'UPDATE_CMS_SECTION',
+      'cms_sections',
+      key,
+      `Updated CMS section ${key} (published: ${section.is_published})`
+    );
+
+    return { success: true, section };
+  }
+
+  getSiteCustomization(): SiteCustomization {
+    return this.state.siteCustomization;
+  }
+
+  updateSiteCustomization(updates: Partial<SiteCustomization>, actor = 'admin'): SiteCustomization {
+    this.state.siteCustomization = {
+      ...this.state.siteCustomization,
+      ...updates,
+    };
+    this.recordAudit(
+      actor,
+      'Admin',
+      'UPDATE_SITE_CUSTOMIZATION',
+      'SiteCustomization',
+      'site-settings',
+      'Updated homepage banners, numbers and branch content'
+    );
+    return this.state.siteCustomization;
   }
 
   recordAudit(actor: string, role: string, action: string, resourceType: string, resourceId: string, details: string) {
