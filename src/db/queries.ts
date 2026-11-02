@@ -149,7 +149,7 @@ export async function seedDatabaseIfNeeded(env?: Env) {
       await db.insert(orders).values({
         id: ord.id,
         orderNumber: ord.order_number,
-        trackingToken: ord.tracking_token,
+        trackingToken: ord.tracking_token || "tk_initial",
         customerName: ord.customer_name,
         customerPhone: ord.customer_phone,
         customerEmail: ord.customer_email || null,
@@ -201,8 +201,8 @@ export async function getDbProducts(env?: Env): Promise<Product[]> {
     const prods = await db.select().from(products);
     const variants = await db.select().from(productVariants);
 
-    return prods.map((p) => {
-      const prodVariants = variants.filter((v) => v.productId === p.id).map((v) => ({
+    return prods.map((p: any) => {
+      const prodVariants = variants.filter((v: any) => v.productId === p.id).map((v: any) => ({
         id: v.id,
         product_id: v.productId,
         sku: v.sku,
@@ -351,7 +351,7 @@ export async function getDbOrders(env?: Env): Promise<Order[]> {
     await seedDatabaseIfNeeded(env);
     const rows = await db.select().from(orders).orderBy(desc(orders.createdAt));
 
-    return rows.map((r) => ({
+    return rows.map((r: any) => ({
       id: r.id,
       order_number: r.orderNumber,
       tracking_token: r.trackingToken,
@@ -388,7 +388,7 @@ export async function createDbOrder(order: Order, env?: Env): Promise<Order> {
     await db.insert(orders).values({
       id: order.id,
       orderNumber: order.order_number,
-      trackingToken: order.tracking_token,
+      trackingToken: order.tracking_token || "tk_created",
       customerName: order.customer_name,
       customerPhone: order.customer_phone,
       customerEmail: order.customer_email || null,
@@ -448,7 +448,7 @@ export async function getDbAuditLogs(env?: Env): Promise<AuditLog[]> {
   try {
     await seedDatabaseIfNeeded(env);
     const rows = await db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp));
-    return rows.map((r) => ({
+    return rows.map((r: any) => ({
       id: r.id,
       timestamp: r.timestamp ? r.timestamp.toISOString() : new Date().toISOString(),
       actor: r.actor,

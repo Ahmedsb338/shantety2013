@@ -39,7 +39,7 @@ export const AdminGate: React.FC = () => {
   };
 
   const loadOwnerDemo = () => {
-    setAdminEmail('as0246135@gmail.com');
+    setAdminEmail('shantety2013@gmail.com');
     setAdminPassword('owner2026');
     setErrorMsg(null);
   };

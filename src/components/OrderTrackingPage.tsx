@@ -19,7 +19,7 @@ export const OrderTrackingPage: React.FC = () => {
   const { language, formatPrice, activeOrder } = useStore();
 
   const [orderNumber, setOrderNumber] = useState(activeOrder ? activeOrder.order_number : '');
-  const [trackingToken, setTrackingToken] = useState(activeOrder ? activeOrder.tracking_token : '');
+  const [trackingToken, setTrackingToken] = useState(activeOrder?.tracking_token || '');
   const [searchedOrder, setSearchedOrder] = useState<Order | null>(activeOrder || null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -28,7 +28,7 @@ export const OrderTrackingPage: React.FC = () => {
     setErrorMsg(null);
 
     const queryNum = (directNumber || orderNumber).trim();
-    const tokenVal = (directToken !== undefined ? directToken : trackingToken).trim();
+    const tokenVal = (directToken !== undefined ? directToken : (trackingToken || '')).trim();
 
     if (!queryNum) {
       setErrorMsg(language === 'ar' ? 'يرجى إدخال رقم الطلب بشكل صحيح (مثال: SHN-2601)' : 'Please enter your order number (e.g. SHN-2601)');
@@ -67,7 +67,7 @@ export const OrderTrackingPage: React.FC = () => {
       setSearchedOrder({
         id: trackData.order_number,
         order_number: trackData.order_number,
-        tracking_token: trackingToken.trim(),
+        tracking_token: (trackingToken || '').trim(),
         customer_name: 'عميل شنطتي الموقر',
         customer_phone: '',
         shipping_address: {

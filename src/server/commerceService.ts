@@ -1,6 +1,12 @@
 import crypto from 'crypto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
+  getBackendReadiness,
+  getSupabaseAdminClient,
+  BackendEnv,
+  BackendConfigurationError,
+} from './supabaseBackend';
+import {
   Product,
   ProductVariant,
   Order,
@@ -79,6 +85,7 @@ interface StoreState {
     isOwner: boolean;
     is_owner: boolean;
     createdBy?: string;
+    created_by?: string;
     created_at?: string;
     updated_at?: string;
   }>;
@@ -128,6 +135,15 @@ export function generateOrderNumber(): string {
 
 class AuthoritativeStore {
   private state: StoreState;
+  private runtimeEnv?: BackendEnv;
+
+  public setRuntimeEnv(env?: BackendEnv) {
+    this.runtimeEnv = env;
+  }
+
+  public getRuntimeEnv(): BackendEnv | undefined {
+    return this.runtimeEnv;
+  }
 
   constructor() {
     this.state = {
@@ -253,26 +269,13 @@ class AuthoritativeStore {
           user_id: 'owner-uuid-1',
           userId: 'owner-uuid-1',
           id: 'adm-1',
-          email: 'as0246135@gmail.com',
-          role: 'super_admin',
-          is_active: true,
-          isActive: true,
-          is_owner: true,
-          isOwner: true,
-          created_by: 'system',
-          created_at: '2026-10-01T00:00:00Z',
-          updated_at: '2026-10-01T00:00:00Z',
-        },
-        {
-          user_id: 'owner-uuid-2',
-          userId: 'owner-uuid-2',
-          id: 'adm-2',
           email: 'shantety2013@gmail.com',
           role: 'super_admin',
           is_active: true,
           isActive: true,
           is_owner: true,
           isOwner: true,
+          createdBy: 'system',
           created_by: 'system',
           created_at: '2026-10-01T00:00:00Z',
           updated_at: '2026-10-01T00:00:00Z',
@@ -282,7 +285,7 @@ class AuthoritativeStore {
           userId: 'admin-uuid-3',
           id: 'adm-3',
           email: 'admin@shantety.com',
-          role: 'super_admin',
+          role: 'store_manager',
           is_active: true,
           isActive: true,
           is_owner: false,
@@ -384,16 +387,30 @@ class AuthoritativeStore {
   // --------------------------------------------------------------------------
   // TRUSTED SERVER-AUTHORITATIVE CHECKOUT
   // --------------------------------------------------------------------------
-  processCheckout(params: {
-    customer_name: string;
-    customer_phone: string;
-    customer_email?: string;
-    customer_id?: string;
-    shipping_address: CustomerAddress;
-    payment_method: PaymentMethod;
-    notes?: string;
-    cartItems: { variant_id: string; quantity: number }[];
-  }): { success: boolean; order?: Order; error_ar?: string; error_en?: string; tracking_token?: string } {
+  processCheckout(
+    params: {
+      customer_name: string;
+      customer_phone: string;
+      customer_email?: string;
+      customer_id?: string;
+      shipping_address: CustomerAddress;
+      payment_method: PaymentMethod;
+      notes?: string;
+      cartItems: { variant_id: string; quantity: number }[];
+    },
+    explicitEnv?: BackendEnv
+  ): { success: boolean; order?: Order; error_ar?: string; error_en?: string; tracking_token?: string } {
+    // 0. Production Environment Readiness Check (Prohibit silent mock in production)
+    const env = explicitEnv || this.runtimeEnv;
+    const readiness = getBackendReadiness(env);
+    if (readiness.isProduction && !readiness.isConfigured) {
+      return {
+        success: false,
+        error_ar: 'الخدمة غير متوفرة حالياً: تعذر الاتصال بقاعدة البيانات الإنتاجية المعتمدة.',
+        error_en: `Production database is not configured. Missing required Supabase credentials: ${readiness.missingRequiredKeys.join(', ')}`,
+      };
+    }
+
     // 1. Validation
     const cleanName = (params.customer_name || '').trim();
     if (cleanName.length < 3) {
@@ -602,13 +619,24 @@ class AuthoritativeStore {
   trackOrder(
     orderNumber: string,
     tokenOrPlaintext: string,
-    clientIp = 'unknown'
+    clientIp = 'unknown',
+    explicitEnv?: BackendEnv
   ): { success: boolean; data?: any; error_ar?: string; error_en?: string } {
     if (!checkRateLimit(clientIp)) {
       return {
         success: false,
         error_ar: 'تجاوزت الحد المسموح من محاولات الاستعلام. يرجى الانتظار دقيقة والمحاولة مجدداً.',
         error_en: 'Rate limit exceeded. Please wait a moment before trying again.',
+      };
+    }
+
+    const env = explicitEnv || this.runtimeEnv;
+    const readiness = getBackendReadiness(env);
+    if (readiness.isProduction && !readiness.isConfigured) {
+      return {
+        success: false,
+        error_ar: 'الخدمة غير متوفرة: تعذر الاتصال بقاعدة البيانات الإنتاجية.',
+        error_en: `Production database is not configured. Missing required Supabase credentials: ${readiness.missingRequiredKeys.join(', ')}`,
       };
     }
 
@@ -690,8 +718,18 @@ class AuthoritativeStore {
     newStatus: OrderStatus,
     carrier?: string,
     trackingNumber?: string,
-    actor = 'admin@shantety.com'
+    actor = 'admin@shantety.com',
+    explicitEnv?: BackendEnv
   ): { success: boolean; order?: Order; error?: string } {
+    const env = explicitEnv || this.runtimeEnv;
+    const readiness = getBackendReadiness(env);
+    if (readiness.isProduction && !readiness.isConfigured) {
+      return {
+        success: false,
+        error: `Production database is not configured. Missing required Supabase credentials: ${readiness.missingRequiredKeys.join(', ')}`,
+      };
+    }
+
     const order = this.state.orders.find((o) => o.id === orderId || o.order_number === orderId);
     if (!order) {
       return { success: false, error: 'Order not found' };
@@ -798,9 +836,7 @@ class AuthoritativeStore {
     const clean = (emailOrUserId || '').toLowerCase().trim();
     const isOwner =
       clean === 'shantety2013@gmail.com' ||
-      clean === 'as0246135@gmail.com' ||
-      clean === 'owner-uuid-1' ||
-      clean === 'owner-uuid-2';
+      clean === 'owner-uuid-1';
 
     const member = this.state.adminMemberships.find(
       (m) =>
@@ -828,8 +864,19 @@ class AuthoritativeStore {
     callingUserEmail: string,
     targetUserId: string,
     newRole: 'store_manager' | 'order_staff',
-    isActive: boolean
+    isActive: boolean,
+    explicitEnv?: BackendEnv
   ): { success: boolean; error?: string } {
+    // 0. Production Readiness Check
+    const env = explicitEnv || this.runtimeEnv;
+    const readiness = getBackendReadiness(env);
+    if (readiness.isProduction && !readiness.isConfigured) {
+      return {
+        success: false,
+        error: `Production database is not configured. Missing required Supabase credentials: ${readiness.missingRequiredKeys.join(', ')}`,
+      };
+    }
+
     // 1. Caller must be owner
     const caller = this.verifyAdminRole(callingUserEmail);
     if (!caller.isAuthorized || !caller.isOwner) {
@@ -840,9 +887,7 @@ class AuthoritativeStore {
     const cleanTarget = (targetUserId || '').toLowerCase().trim();
     const targetIsOwner =
       cleanTarget === 'shantety2013@gmail.com' ||
-      cleanTarget === 'as0246135@gmail.com' ||
-      cleanTarget === 'owner-uuid-1' ||
-      cleanTarget === 'owner-uuid-2';
+      cleanTarget === 'owner-uuid-1';
 
     const target = this.state.adminMemberships.find(
       (m) => m.userId === targetUserId || m.user_id === targetUserId || m.email?.toLowerCase() === cleanTarget
@@ -912,8 +957,18 @@ class AuthoritativeStore {
   updateCmsSection(
     key: string,
     data: { title_ar?: string; title_en?: string; content?: Record<string, any>; is_published?: boolean },
-    actor = 'admin'
+    actor = 'admin',
+    explicitEnv?: BackendEnv
   ): { success: boolean; section?: any; error?: string } {
+    const env = explicitEnv || this.runtimeEnv;
+    const readiness = getBackendReadiness(env);
+    if (readiness.isProduction) {
+      return {
+        success: false,
+        error: 'CMS database tables (cms_sections, site_customization) do not exist in the authoritative database schema. Migration 004 is required to persist CMS content in production.',
+      };
+    }
+
     let section = this.state.cmsSections.find((s) => s.key === key || s.id === key);
     if (!section) {
       section = {
@@ -989,7 +1044,19 @@ class AuthoritativeStore {
     return this.state.siteCustomization;
   }
 
-  updateSiteCustomization(updates: Partial<SiteCustomization>, actor = 'admin'): SiteCustomization {
+  updateSiteCustomization(
+    updates: Partial<SiteCustomization>,
+    actor = 'admin',
+    explicitEnv?: BackendEnv
+  ): SiteCustomization {
+    const env = explicitEnv || this.runtimeEnv;
+    const readiness = getBackendReadiness(env);
+    if (readiness.isProduction) {
+      throw new BackendConfigurationError(
+        'Site customization database table does not exist in the authoritative database schema. Migration 004 is required to persist customization in production.'
+      );
+    }
+
     this.state.siteCustomization = {
       ...this.state.siteCustomization,
       ...updates,

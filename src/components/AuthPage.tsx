@@ -576,7 +576,7 @@ export const AuthPage: React.FC = () => {
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-5">
+        <div className="p-5 sm:p-6 space-y-5">
           {/* TAB 1: SIGN IN */}
           {activeTab === 'signin' && (
             <form onSubmit={handleCustomerSignIn} className="space-y-4 animate-fadeIn">
@@ -587,54 +587,54 @@ export const AuthPage: React.FC = () => {
                 </div>
               )}
 
-              <div className="space-y-1">
-                <label className="font-bold text-stone-800">
+              <div className="space-y-1.5">
+                <label className="font-bold text-stone-800 text-xs block">
                   {language === 'ar' ? 'البريد الإلكتروني *' : 'Email Address *'}
                 </label>
                 <div className="relative">
+                  <Mail className="w-4 h-4 text-stone-400 absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="email"
                     required
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     placeholder="name@example.com"
-                    className="w-full p-2.5 rounded-lg border border-stone-300 focus:outline-none focus:border-[#E10600]"
+                    className="w-full py-2.5 ps-10 pe-4 rounded-xl border border-stone-300 bg-white text-stone-900 text-xs focus:outline-hidden focus:border-[#E10600] focus:ring-1 focus:ring-[#E10600] transition-all"
                   />
-                  <Mail className="w-4 h-4 text-stone-400 absolute left-3 rtl:left-auto rtl:right-3 top-3 pointer-events-none" />
                 </div>
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="font-bold text-stone-800">
+                  <label className="font-bold text-stone-800 text-xs block">
                     {language === 'ar' ? 'كلمة المرور *' : 'Password *'}
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="text-stone-400 hover:text-stone-600 text-[11px] flex items-center gap-1 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    <span>{showPassword ? (language === 'ar' ? 'إخفاء' : 'Hide') : (language === 'ar' ? 'إظهار' : 'Show')}</span>
-                  </button>
                 </div>
                 <div className="relative">
+                  <Lock className="w-4 h-4 text-stone-400 absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full p-2.5 rounded-lg border border-stone-300 focus:outline-none focus:border-[#E10600]"
+                    className="w-full py-2.5 ps-10 pe-10 rounded-xl border border-stone-300 bg-white text-stone-900 text-xs focus:outline-hidden focus:border-[#E10600] focus:ring-1 focus:ring-[#E10600] transition-all"
                   />
-                  <Lock className="w-4 h-4 text-stone-400 absolute left-3 rtl:left-auto rtl:right-3 top-3 pointer-events-none" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-stone-400 hover:text-stone-600 absolute end-3 top-1/2 -translate-y-1/2 p-1 cursor-pointer"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
                 </div>
               </div>
 
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-2.5 bg-[#E10600] hover:bg-[#c20500] text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all active:scale-98 disabled:opacity-50"
+                className="w-full py-3 bg-[#E10600] hover:bg-[#c20500] text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all active:scale-98 disabled:opacity-50 mt-2"
               >
                 <KeyRound className="w-4 h-4" />
                 <span>
@@ -656,8 +656,8 @@ export const AuthPage: React.FC = () => {
                 </div>
               )}
 
-              <div className="space-y-1">
-                <label className="font-bold text-stone-800">
+              <div className="space-y-1.5">
+                <label className="font-bold text-stone-800 text-xs block">
                   {language === 'ar' ? 'الاسم بالكامل *' : 'Full Name *'}
                 </label>
                 <input
@@ -666,12 +666,12 @@ export const AuthPage: React.FC = () => {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder={language === 'ar' ? 'مثال: ياسمين خيري' : 'e.g. Yasmine Khairy'}
-                  className="w-full p-2.5 rounded-lg border border-stone-300 focus:outline-none focus:border-[#E10600]"
+                  className="w-full py-2.5 px-3 rounded-xl border border-stone-300 bg-white text-stone-900 text-xs focus:outline-hidden focus:border-[#E10600] focus:ring-1 focus:ring-[#E10600] transition-all"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-stone-800">
+              <div className="space-y-1.5">
+                <label className="font-bold text-stone-800 text-xs block">
                   {language === 'ar' ? 'رقم الهاتف المصري *' : 'Egyptian Phone *'}
                 </label>
                 <input
@@ -680,12 +680,12 @@ export const AuthPage: React.FC = () => {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="01012345678"
-                  className="w-full p-2.5 rounded-lg border border-stone-300 font-mono focus:outline-none focus:border-[#E10600]"
+                  className="w-full py-2.5 px-3 rounded-xl border border-stone-300 bg-white text-stone-900 font-mono text-xs focus:outline-hidden focus:border-[#E10600] focus:ring-1 focus:ring-[#E10600] transition-all"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-stone-800">
+              <div className="space-y-1.5">
+                <label className="font-bold text-stone-800 text-xs block">
                   {language === 'ar' ? 'البريد الإلكتروني *' : 'Email Address *'}
                 </label>
                 <input
@@ -694,18 +694,18 @@ export const AuthPage: React.FC = () => {
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
                   placeholder="name@example.com"
-                  className="w-full p-2.5 rounded-lg border border-stone-300 focus:outline-none focus:border-[#E10600]"
+                  className="w-full py-2.5 px-3 rounded-xl border border-stone-300 bg-white text-stone-900 text-xs focus:outline-hidden focus:border-[#E10600] focus:ring-1 focus:ring-[#E10600] transition-all"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-stone-800">
+              <div className="space-y-1.5">
+                <label className="font-bold text-stone-800 text-xs block">
                   {language === 'ar' ? 'المحافظة *' : 'Governorate *'}
                 </label>
                 <select
                   value={governorate}
                   onChange={(e) => setGovernorate(e.target.value)}
-                  className="w-full p-2.5 rounded-lg border border-stone-300 bg-white focus:outline-none focus:border-[#E10600]"
+                  className="w-full py-2.5 px-3 rounded-xl border border-stone-300 bg-white text-stone-900 text-xs focus:outline-hidden focus:border-[#E10600] focus:ring-1 focus:ring-[#E10600] transition-all"
                 >
                   {EGYPTIAN_GOVERNORATES.map((g) => (
                     <option key={g.name_ar} value={g.name_ar}>
@@ -715,8 +715,8 @@ export const AuthPage: React.FC = () => {
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-stone-800">
+              <div className="space-y-1.5">
+                <label className="font-bold text-stone-800 text-xs block">
                   {language === 'ar' ? 'كلمة المرور *' : 'Password *'}
                 </label>
                 <input
@@ -725,14 +725,14 @@ export const AuthPage: React.FC = () => {
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full p-2.5 rounded-lg border border-stone-300 focus:outline-none focus:border-[#E10600]"
+                  className="w-full py-2.5 px-3 rounded-xl border border-stone-300 bg-white text-stone-900 text-xs focus:outline-hidden focus:border-[#E10600] focus:ring-1 focus:ring-[#E10600] transition-all"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-2.5 bg-[#E10600] hover:bg-[#c20500] text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all active:scale-98 mt-2 disabled:opacity-50"
+                className="w-full py-3 bg-[#E10600] hover:bg-[#c20500] text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all active:scale-98 mt-3 disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>
@@ -743,16 +743,6 @@ export const AuthPage: React.FC = () => {
               </button>
             </form>
           )}
-
-          {/* Quick link to Admin Gate */}
-          <div className="pt-4 border-t border-stone-100 text-center">
-            <button
-              onClick={() => setCurrentView('admin')}
-              className="text-stone-400 hover:text-stone-700 text-[11px] underline cursor-pointer"
-            >
-              {language === 'ar' ? 'بوابة دخول إدارة المتجر (Admin Portal)' : 'Store Management Admin Access'}
-            </button>
-          </div>
         </div>
       </div>
     </div>

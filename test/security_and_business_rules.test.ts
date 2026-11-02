@@ -1,4 +1,6 @@
 import { authoritativeStore, hashTrackingToken } from '../src/server/commerceService';
+import { getBackendReadiness, assertProductionBackendReady, BackendConfigurationError } from '../src/server/supabaseBackend';
+import { verifyAdminRequest } from '../src/server/authMiddleware';
 
 interface TestResult {
   name: string;
@@ -89,7 +91,7 @@ export async function runSecurityAndBusinessTests() {
   const expectedHash = hashTrackingToken(tokenGivenToBuyer);
   assert(
     'Guest tracking tokens are securely hashed with SHA-256 in storage',
-    storedHash === expectedHash && !storedOrder?.tracking_token.includes('PLAINTEXT_SECRET_LEAK'),
+    storedHash === expectedHash && !storedOrder?.tracking_token?.includes('PLAINTEXT_SECRET_LEAK'),
     'Token stored only as SHA-256 hash',
     `Stored hash matches SHA-256(${tokenGivenToBuyer.slice(0, 8)}...)`,
     `Hash: ${storedHash}`
@@ -151,7 +153,6 @@ export async function runSecurityAndBusinessTests() {
   );
   const stockAfterCancel1 = sampleVariant!.stock_reserved;
 
-  // Attempt duplicate cancellation to verify idempotency
   const cancelResult2 = authoritativeStore.updateOrderStatus(
     orderCreated!.id,
     'cancelled',
@@ -171,8 +172,8 @@ export async function runSecurityAndBusinessTests() {
 
   // Test 8: Store owner protection: Owner cannot be demoted or deactivated
   const ownerDemotionAttempt = authoritativeStore.manageAdminMembership(
-    'as0246135@gmail.com', // Caller is owner
-    'as0246135@gmail.com', // Target is owner themselves
+    'shantety2013@gmail.com', // Caller is owner
+    'shantety2013@gmail.com', // Target is owner themselves
     'order_staff',
     false
   );
@@ -199,9 +200,9 @@ export async function runSecurityAndBusinessTests() {
     'Only active store owner can invoke manageAdminMembership'
   );
 
-  // Test 10: Store manager cannot create another super_admin
+  // Test 10: Cannot create arbitrary super_admin via membership RPC
   const superAdminEscalationAttempt = authoritativeStore.manageAdminMembership(
-    'as0246135@gmail.com',
+    'shantety2013@gmail.com',
     'newuser@shantety.com',
     'super_admin' as any,
     true
@@ -245,6 +246,89 @@ export async function runSecurityAndBusinessTests() {
     `Validated bytea prefix '${byteaHex.slice(0, 8)}...' and 32-byte binary digest`
   );
 
+  // Test 13: Production Mode: Missing Supabase credentials strictly BLOCKS checkout (no silent mock)
+  const productionMockEnv = {
+    NODE_ENV: 'production',
+    ALLOW_DEV_MOCKS: 'false',
+    SUPABASE_URL: '',
+    SUPABASE_SERVICE_ROLE_KEY: '',
+    SUPABASE_ANON_KEY: '',
+  };
+
+  const prodCheckoutAttempt = authoritativeStore.processCheckout(
+    {
+      customer_name: 'أحمد محمود',
+      customer_phone: '01099887766',
+      shipping_address: {
+        id: 'addr-prod-test',
+        customer_name: 'أحمد محمود',
+        phone: '01099887766',
+        governorate: 'القاهرة',
+        city: 'المعادي',
+        street_address: 'شارع 9',
+        is_default: true,
+      },
+      payment_method: 'cod',
+      cartItems: [{ variant_id: variantId, quantity: 1 }],
+    },
+    productionMockEnv
+  );
+
+  assert(
+    'Production environment strictly blocks checkout when database credentials are missing',
+    Boolean(prodCheckoutAttempt.success === false && prodCheckoutAttempt.error_en?.includes('Production database is not configured')),
+    'success=false with clear configuration error (no silent mock fallback)',
+    `success=${prodCheckoutAttempt.success}, error_en="${prodCheckoutAttempt.error_en}"`,
+    'Verified production readiness gate in commerceService'
+  );
+
+  // Test 14: Production Mode: Readiness diagnostic returns CONFIGURATION_BLOCKED
+  const readinessReport = getBackendReadiness(productionMockEnv);
+  assert(
+    'Readiness diagnostic reports CONFIGURATION_BLOCKED in unconfigured production',
+    readinessReport.isProduction === true &&
+      readinessReport.status === 'CONFIGURATION_BLOCKED' &&
+      readinessReport.missingRequiredKeys.includes('SUPABASE_URL'),
+    'status="CONFIGURATION_BLOCKED" with missing required keys listed',
+    `status=${readinessReport.status}, missing=${readinessReport.missingRequiredKeys.join(', ')}`,
+    'Verified getBackendReadiness'
+  );
+
+  // Test 15: Production Mode: Admin request without Bearer token is strictly rejected
+  const unauthAdminCheck = await verifyAdminRequest(undefined, 'admin@shantety.com', productionMockEnv);
+  assert(
+    'Production admin endpoints require authenticated Supabase Bearer token (rejects header email spoofing)',
+    unauthAdminCheck.isAuthorized === false && unauthAdminCheck.statusCode === 401,
+    'isAuthorized=false, statusCode=401',
+    `isAuthorized=${unauthAdminCheck.isAuthorized}, statusCode=${unauthAdminCheck.statusCode}`,
+    `Error returned: "${unauthAdminCheck.error}"`
+  );
+
+  // Test 16: Inactive administrator cannot access admin functions
+  const inactiveCheck = authoritativeStore.verifyAdminRole('inactive_user@shantety.com');
+  assert(
+    'Inactive administrators are strictly denied access',
+    inactiveCheck.isAuthorized === false,
+    'isAuthorized=false',
+    `isAuthorized=${inactiveCheck.isAuthorized}`,
+    'Verified inactive member rejection'
+  );
+
+  // Test 17: Production Mode: CMS modifications are blocked because Migration 004 is unapplied
+  const cmsUpdateInProd = authoritativeStore.updateCmsSection(
+    'hero_banner',
+    { title_ar: 'تحديث تجريبي' },
+    'admin',
+    productionMockEnv
+  );
+  assert(
+    'Production environment blocks CMS updates and flags Migration 004 requirement',
+    Boolean(cmsUpdateInProd.success === false && cmsUpdateInProd.error?.includes('Migration 004 is required')),
+    'success=false stating Migration 004 is required',
+    `success=${cmsUpdateInProd.success}, error="${cmsUpdateInProd.error}"`,
+    'Verified CMS production blocker'
+  );
+
   console.log('\n--- TEST EXECUTION SUMMARY ---');
   let passCount = 0;
   for (const r of testResults) {
@@ -259,4 +343,3 @@ export async function runSecurityAndBusinessTests() {
 }
 
 runSecurityAndBusinessTests();
-

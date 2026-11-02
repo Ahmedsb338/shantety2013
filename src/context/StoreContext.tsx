@@ -92,7 +92,61 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [language, setLanguageState] = useState<Language>(() => {
     return (localStorage.getItem('shanaty_lang') as Language) || 'ar';
   });
-  const [currentView, setCurrentView] = useState<StoreView>('home');
+  const getViewFromPath = (): StoreView => {
+    if (typeof window === 'undefined') return 'home';
+    const path = window.location.pathname.toLowerCase().replace(/\/$/, '');
+    if (path === '/admin' || path.startsWith('/admin')) return 'admin';
+    if (path === '/shop' || path === '/catalog' || path === '/products') return 'shop';
+    if (path === '/track' || path === '/order-tracking') return 'order-tracking';
+    if (path === '/checkout') return 'checkout';
+    if (path === '/account' || path === '/login') return 'account';
+    if (path === '/wishlist') return 'wishlist';
+    if (path === '/about') return 'about';
+    if (path === '/contact') return 'contact';
+    if (path === '/shipping-policy') return 'shipping-policy';
+    if (path === '/returns-policy') return 'returns-policy';
+    if (path === '/faq') return 'faq';
+    return 'home';
+  };
+
+  const [currentView, setCurrentViewState] = useState<StoreView>(getViewFromPath);
+
+  const setCurrentView = (view: StoreView) => {
+    setCurrentViewState(view);
+    if (typeof window !== 'undefined') {
+      const pathToView: Record<StoreView, string> = {
+        home: '/',
+        shop: '/shop',
+        categories: '/shop',
+        'product-detail': '/shop',
+        cart: '/shop',
+        checkout: '/checkout',
+        'order-confirmation': '/checkout',
+        'order-tracking': '/order-tracking',
+        account: '/account',
+        wishlist: '/wishlist',
+        about: '/about',
+        contact: '/contact',
+        faq: '/faq',
+        'shipping-policy': '/shipping-policy',
+        'returns-policy': '/returns-policy',
+        admin: '/admin',
+      };
+      const newPath = pathToView[view] || '/';
+      if (window.location.pathname !== newPath) {
+        window.history.pushState({ view }, '', newPath);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentViewState(getViewFromPath());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
