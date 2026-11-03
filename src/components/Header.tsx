@@ -20,8 +20,10 @@ import {
   Lock,
   ArrowLeftRight,
   User,
+  LogOut,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
+import { useCustomerAuth } from '../context/CustomerAuthContext';
 
 export const Header: React.FC = () => {
   const {
@@ -39,7 +41,8 @@ export const Header: React.FC = () => {
     setIsCompareOpen,
     categories,
   } = useStore();
-  const { currentUser, isAuthenticated } = useAdminAuth();
+  const { currentUser: adminUser, isAuthenticated: isAdminAuth, logout: adminLogout } = useAdminAuth();
+  const { customer, isAuthenticated: isCustomerAuth, logout: customerLogout } = useCustomerAuth();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -120,8 +123,9 @@ export const Header: React.FC = () => {
             <button
               onClick={() => navigateTo('home')}
               className="flex items-center gap-2 sm:gap-3 text-left rtl:text-right group cursor-pointer min-w-0"
+              aria-label="Shantety Home"
             >
-              <div className="relative w-9 h-9 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-white border border-stone-200/80 p-0.5 shadow-2xs group-hover:border-[#E10600] transition-colors shrink-0">
+              <div className="relative w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-white border border-stone-200/80 p-0.5 shadow-2xs group-hover:border-[#E10600] transition-colors shrink-0">
                 <img
                   src={OFFICIAL_BRAND.logo_white}
                   alt="Shantety Official Logo"
@@ -129,7 +133,7 @@ export const Header: React.FC = () => {
                   referrerPolicy="no-referrer"
                 />
               </div>
-              <div className="flex flex-col min-w-0">
+              <div className="hidden sm:flex flex-col min-w-0">
                 <span className="text-lg sm:text-2xl font-black tracking-tight text-stone-900 group-hover:text-[#E10600] transition-colors leading-none truncate">
                   {language === 'ar' ? 'شـنـطـتـي' : 'SHANTETY'}
                 </span>
@@ -280,23 +284,77 @@ export const Header: React.FC = () => {
               </span>
             </button>
 
-            {/* Account / Sign In Trigger */}
-            <button
-              onClick={() => navigateTo('account')}
-              className={`flex py-1.5 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer items-center gap-1.5 ${
-                currentView === 'account'
-                  ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                  : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
-              }`}
-              title={language === 'ar' ? 'حسابي / تسجيل الدخول' : 'Account / Sign In'}
-            >
-              <User className="w-3.5 h-3.5 text-[#E10600]" />
-              <span className="hidden sm:inline">
-                {isAuthenticated
-                  ? (language === 'ar' ? 'حسابي' : 'Account')
-                  : (language === 'ar' ? 'دخول / حساب' : 'Sign In')}
-              </span>
-            </button>
+            {/* Account / Sign In / Logout Reactive Area */}
+            {isCustomerAuth ? (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => navigateTo('account')}
+                  className={`min-h-[44px] flex py-1.5 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer items-center gap-1.5 ${
+                    currentView === 'account'
+                      ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
+                      : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                  }`}
+                  title={language === 'ar' ? 'حساب العميل' : 'Customer Account'}
+                  aria-label="Customer Account"
+                >
+                  <div className="w-5 h-5 rounded-full bg-[#E10600] text-white flex items-center justify-center font-bold text-[10px]">
+                    {customer?.fullName ? customer.fullName.charAt(0).toUpperCase() : 'C'}
+                  </div>
+                  <span className="hidden sm:inline font-bold">
+                    {customer?.fullName?.split(' ')[0] || (language === 'ar' ? 'حسابي' : 'Account')}
+                  </span>
+                </button>
+                <button
+                  onClick={async () => {
+                    await customerLogout();
+                    navigateTo('home');
+                  }}
+                  className="min-h-[44px] min-w-[44px] p-2 text-stone-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+                  title={language === 'ar' ? 'تسجيل الخروج' : 'Logout'}
+                  aria-label="Logout"
+                >
+                  <LogOut className="w-4 h-4 text-rose-500" />
+                </button>
+              </div>
+            ) : isAdminAuth ? (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => navigateTo('admin')}
+                  className="min-h-[44px] flex py-1.5 px-2.5 rounded-lg text-xs font-semibold border border-red-200 bg-red-50 text-[#E10600] hover:bg-red-100 transition-all cursor-pointer items-center gap-1.5"
+                  title={language === 'ar' ? 'لوحة تحكم الإدارة' : 'Admin Panel'}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{language === 'ar' ? 'لوحة الإدارة' : 'Admin'}</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    adminLogout();
+                    navigateTo('home');
+                  }}
+                  className="min-h-[44px] min-w-[44px] p-2 text-stone-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+                  title={language === 'ar' ? 'تسجيل الخروج' : 'Logout'}
+                  aria-label="Logout"
+                >
+                  <LogOut className="w-4 h-4 text-rose-500" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => navigateTo('account')}
+                className={`min-h-[44px] min-w-[44px] sm:min-w-0 flex py-1.5 px-2.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer items-center justify-center gap-1.5 ${
+                  currentView === 'account'
+                    ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
+                    : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                }`}
+                title={language === 'ar' ? 'تسجيل الدخول / حسابي' : 'Sign In / Account'}
+                aria-label="Sign In / Account"
+              >
+                <User className="w-4 h-4 text-[#E10600]" />
+                <span className="hidden sm:inline">
+                  {language === 'ar' ? 'تسجيل الدخول' : 'Sign In'}
+                </span>
+              </button>
+            )}
 
             {/* Customer Header Ends */}
           </div>
@@ -447,7 +505,7 @@ export const Header: React.FC = () => {
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-[#E10600]" />
                 <span>
-                  {isAuthenticated
+                  {isCustomerAuth
                     ? (language === 'ar' ? 'حسابي وبياناتي' : 'My Account')
                     : (language === 'ar' ? 'تسجيل الدخول / إنشاء حساب' : 'Sign In / Register')}
                 </span>

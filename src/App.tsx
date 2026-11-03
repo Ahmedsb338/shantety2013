@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { AdminAuthProvider } from './context/AdminAuthContext';
 import { CustomerAuthProvider } from './context/CustomerAuthContext';
@@ -8,6 +8,7 @@ import { SeoHead } from './components/SeoHead';
 import { HeroBanner } from './components/HeroBanner';
 import { FeaturedCategories } from './components/FeaturedCategories';
 import { ProductCard } from './components/ProductCard';
+import { verifySupabaseConnection } from './lib/supabaseDiagnostics';
 import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
 
 // Route-level code splitting & lazy loading
@@ -50,6 +51,13 @@ const ViewLoaderFallback: React.FC = () => (
 
 const MainStoreContent: React.FC = () => {
   const { currentView, setCurrentView, selectedProduct, products, language } = useStore();
+
+  useEffect(() => {
+    // Run safe browser Supabase diagnostics and log connection status
+    verifySupabaseConnection().catch((err) => {
+      console.warn('Initial Supabase verification check:', err);
+    });
+  }, []);
 
   // If Admin view is selected, render isolated Admin Dashboard with its own shell
   if (currentView === 'admin') {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext';
 import { StoreDatabase } from '../services/storeDatabase';
+import { verifySupabaseConnection } from '../lib/supabaseDiagnostics';
 import {
   CheckCircle2,
   AlertCircle,
@@ -31,6 +32,15 @@ export const SystemTestTab: React.FC = () => {
   const { language, showToast } = useStore();
 
   const [tests, setTests] = useState<TestCase[]>([
+    {
+      id: 'test-supabase-browser-conn',
+      name_ar: 'تشخيص اتصال Supabase بالمتصفح وسلامة المتغيرات (Safe Keys)',
+      name_en: 'Browser Supabase Connection & Safe Credentials Audit',
+      category: 'database',
+      status: 'idle',
+      details_ar: 'فحص تهيئة VITE_SUPABASE_URL والمفتاح العام المُموّه واختبار سرعة الاستجابة دون كشف الأسرار.',
+      details_en: 'Verifies VITE_SUPABASE_URL, masked public ANON_KEY, and ping latency without leaking secrets.',
+    },
     {
       id: 'test-db-health',
       name_ar: 'اتصال خادم PostgreSQL وصحة جداول Cloud SQL',
@@ -115,7 +125,20 @@ export const SystemTestTab: React.FC = () => {
     const startTime = performance.now();
 
     try {
-      if (testId === 'test-db-health') {
+      if (testId === 'test-supabase-browser-conn') {
+        const diag = await verifySupabaseConnection({ silentLog: false });
+        if (!diag.isConnected && diag.status === 'UNCONFIGURED') {
+          // Informative message in test output
+          throw new Error(
+            language === 'ar'
+              ? `المتغيرات غير مهيأة: ${diag.url.maskedValue}`
+              : `Browser env unconfigured: ${diag.url.maskedValue}`
+          );
+        }
+        if (diag.status === 'DISCONNECTED') {
+          throw new Error(diag.errorMessage || 'Supabase connection check failed');
+        }
+      } else if (testId === 'test-db-health') {
         const res = await fetch('/api/health');
         if (!res.ok) throw new Error('Health endpoint returned error');
       } else if (testId === 'test-catalog-integrity') {

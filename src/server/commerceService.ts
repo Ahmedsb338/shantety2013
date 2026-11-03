@@ -438,28 +438,36 @@ class AuthoritativeStore {
       };
     }
 
-    // 2. Atomic Inventory Verification (all or nothing)
-    // Find all variants in authoritative catalog and verify available stock
+    // 2. Atomic Inventory Verification with Duplicate Variant Aggregation & Deterministic Sorting
+    // Aggregate duplicate variant IDs from cart items to avoid split checkouts
+    const aggregatedCart = new Map<string, number>();
+    for (const item of params.cartItems) {
+      if (!item || !item.variant_id || item.quantity <= 0 || !Number.isInteger(item.quantity) || item.quantity > 50) {
+        return {
+          success: false,
+          error_ar: 'كمية المنتج غير صالحة (يجب أن تكون عدداً صحيحاً بين 1 و 50)',
+          error_en: 'Invalid item quantity (must be an integer between 1 and 50)',
+        };
+      }
+      aggregatedCart.set(item.variant_id, (aggregatedCart.get(item.variant_id) || 0) + item.quantity);
+    }
+
+    // Sort variant IDs deterministically (ORDER BY variant_id ASC) to prevent concurrency deadlocks
+    const sortedVariantIds = Array.from(aggregatedCart.keys()).sort();
+
     const matchedVariants: Array<{
       product: Product;
       variant: ProductVariant;
       quantity: number;
     }> = [];
 
-    for (const item of params.cartItems) {
-      if (item.quantity <= 0 || !Number.isInteger(item.quantity) || item.quantity > 50) {
-        return {
-          success: false,
-          error_ar: 'كمية المنتج غير صالحة',
-          error_en: 'Invalid item quantity',
-        };
-      }
-
+    for (const variantId of sortedVariantIds) {
+      const quantity = aggregatedCart.get(variantId)!;
       let foundProduct: Product | undefined;
       let foundVariant: ProductVariant | undefined;
 
       for (const p of this.state.products) {
-        const v = p.variants?.find((vx) => vx.id === item.variant_id);
+        const v = p.variants?.find((vx) => vx.id === variantId);
         if (v) {
           foundProduct = p;
           foundVariant = v;
@@ -470,13 +478,13 @@ class AuthoritativeStore {
       if (!foundProduct || !foundVariant) {
         return {
           success: false,
-          error_ar: `المنتج المطلوب (${item.variant_id}) غير متوفر في النظام`,
-          error_en: `Product variant ${item.variant_id} not found in catalog`,
+          error_ar: `المنتج المطلوب (${variantId}) غير متوفر في النظام`,
+          error_en: `Product variant ${variantId} not found in catalog`,
         };
       }
 
       const available = foundVariant.stock_on_hand - foundVariant.stock_reserved;
-      if (available < item.quantity) {
+      if (available < quantity) {
         return {
           success: false,
           error_ar: `عذراً، الكمية المتاحة من القطعة (${foundVariant.sku}) هي ${Math.max(0, available)} فقط`,
@@ -487,7 +495,7 @@ class AuthoritativeStore {
       matchedVariants.push({
         product: foundProduct,
         variant: foundVariant,
-        quantity: item.quantity,
+        quantity,
       });
     }
 
@@ -563,7 +571,10 @@ class AuthoritativeStore {
       });
     }
 
-    // 6. Record Order
+    // 6. Record Order - Payment integrity: never mark paid based only on method selected!
+    const initialPaymentStatus: 'pending' | 'awaiting_payment' =
+      params.payment_method === 'cod' ? 'pending' : 'awaiting_payment';
+
     const newOrder: Order = {
       id: orderId,
       order_number: orderNumber,
@@ -581,7 +592,7 @@ class AuthoritativeStore {
       total,
       currency: 'EGP',
       status: 'pending',
-      payment_status: params.payment_method === 'cod' ? 'pending' : 'paid',
+      payment_status: initialPaymentStatus,
       payment_method: params.payment_method,
       shipping_provider: 'Shantety Express',
       tracking_number: 'BST-' + Math.floor(1000000 + Math.random() * 9000000),
@@ -603,7 +614,7 @@ class AuthoritativeStore {
       'CHECKOUT_ORDER_CREATED',
       'Order',
       orderNumber,
-      `Created order ${orderNumber} for ${total} EGP (${params.payment_method}). Reserved stock for ${matchedVariants.length} items.`
+      `Created order ${orderNumber} for ${total} EGP (${params.payment_method}, payment_status=${initialPaymentStatus}). Reserved stock for ${matchedVariants.length} items.`
     );
 
     return {
@@ -707,6 +718,72 @@ class AuthoritativeStore {
     return {
       success: true,
       data: sanitizedTrackingData,
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // CRYPTOGRAPHIC GUEST ORDER CLAIMING
+  // --------------------------------------------------------------------------
+  claimGuestOrder(
+    orderNumber: string,
+    trackingToken: string,
+    customerId: string,
+    customerEmail = 'customer@shantety.com',
+    explicitEnv?: BackendEnv
+  ): { success: boolean; order_number?: string; error_ar?: string; error_en?: string } {
+    const cleanNum = (orderNumber || '').trim().toUpperCase();
+    const token = (trackingToken || '').trim();
+
+    if (!cleanNum || !token) {
+      return {
+        success: false,
+        error_ar: 'يرجى إدخال رقم الطلب ورمز التتبع السري',
+        error_en: 'Order number and tracking token required',
+      };
+    }
+
+    const order = this.state.orders.find((o) => o.order_number.toUpperCase() === cleanNum);
+    if (!order) {
+      return {
+        success: false,
+        error_ar: 'لم يتم العثور على الطلب المطلوب',
+        error_en: 'Order not found',
+      };
+    }
+
+    const storedHash = (order as any).tracking_token_hash || order.tracking_token;
+    if (!matchesTokenHash(token, storedHash)) {
+      return {
+        success: false,
+        error_ar: 'رمز التحقق من ملكية الطلب غير صحيح',
+        error_en: 'Invalid order ownership credentials',
+      };
+    }
+
+    if (order.customer_id && order.customer_id !== customerId) {
+      return {
+        success: false,
+        error_ar: 'هذا الطلب مرتبط بالفعل بحساب عميل آخر',
+        error_en: 'Order is already linked to another customer account',
+      };
+    }
+
+    order.customer_id = customerId;
+    order.user_id = customerId;
+    order.updated_at = new Date().toISOString();
+
+    this.recordAudit(
+      customerEmail,
+      'Customer',
+      'CLAIM_GUEST_ORDER',
+      'Order',
+      order.order_number,
+      `Claimed guest order ${order.order_number} to customer account ${customerId}`
+    );
+
+    return {
+      success: true,
+      order_number: order.order_number,
     };
   }
 
@@ -1115,6 +1192,81 @@ class AuthoritativeStore {
       return rev.helpful_count;
     }
     return 0;
+  }
+
+  // --------------------------------------------------------------------------
+  // NEWSLETTER SUBSCRIPTION
+  // --------------------------------------------------------------------------
+  async subscribeNewsletter(
+    email: string,
+    source = 'homepage_footer',
+    explicitEnv?: BackendEnv
+  ): Promise<{ success: boolean; isNew: boolean; messageAr: string; messageEn: string }> {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      throw new Error('Invalid email address format');
+    }
+
+    const env = explicitEnv || this.runtimeEnv;
+    const adminClient = getSupabaseAdminClient(env);
+
+    if (adminClient) {
+      const { data, error } = await adminClient
+        .from('newsletter_subscribers')
+        .insert([{ email: cleanEmail, source, status: 'active' }])
+        .select()
+        .single();
+
+      if (error) {
+        if (
+          error.code === '23505' ||
+          error.message?.includes('duplicate') ||
+          error.message?.includes('unique')
+        ) {
+          return {
+            success: true,
+            isNew: false,
+            messageAr: 'أنتِ مشتركة بالفعل في نشرة شنطتي البريدية! يسعدنا تواصلكِ معنا دائماً.',
+            messageEn: 'You are already subscribed to the Shantety newsletter! We appreciate your loyalty.',
+          };
+        }
+        throw new Error(error.message);
+      }
+
+      this.recordAudit(
+        cleanEmail,
+        'Guest',
+        'NEWSLETTER_SUBSCRIBE',
+        'NewsletterSubscriber',
+        cleanEmail,
+        `Subscribed to newsletter from ${source}`
+      );
+
+      return {
+        success: true,
+        isNew: true,
+        messageAr: 'تم اشتراككِ بنجاح في نشرة شنطتي! ستصلكِ أحدث العروض والخصومات الحصرية.',
+        messageEn: 'Successfully subscribed to Shantety newsletter! You will receive our latest offers soon.',
+      };
+    }
+
+    // In-memory development tracking
+    this.recordAudit(
+      cleanEmail,
+      'Guest',
+      'NEWSLETTER_SUBSCRIBE_DEV',
+      'NewsletterSubscriber',
+      cleanEmail,
+      `Subscribed to newsletter in dev mode from ${source}`
+    );
+
+    return {
+      success: true,
+      isNew: true,
+      messageAr: 'تم اشتراككِ بنجاح في نشرة شنطتي! ستصلكِ أحدث العروض والخصومات الحصرية.',
+      messageEn: 'Successfully subscribed to Shantety newsletter! You will receive our latest offers soon.',
+    };
   }
 }
 

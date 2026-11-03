@@ -6,9 +6,12 @@ import {
   Order,
   SiteCustomization,
   Category,
+  StoreView,
 } from '../types/ecommerce';
 import { StoreDatabase } from '../services/storeDatabase';
 import { OFFICIAL_BRAND, DEFAULT_SITE_CUSTOMIZATION } from '../data/initialData';
+
+export type { StoreView };
 
 export interface CartItem {
   variant_id: string;
@@ -16,24 +19,6 @@ export interface CartItem {
   variant: ProductVariant;
   quantity: number;
 }
-
-export type StoreView =
-  | 'home'
-  | 'shop'
-  | 'categories'
-  | 'product-detail'
-  | 'cart'
-  | 'checkout'
-  | 'order-confirmation'
-  | 'order-tracking'
-  | 'account'
-  | 'wishlist'
-  | 'about'
-  | 'contact'
-  | 'faq'
-  | 'shipping-policy'
-  | 'returns-policy'
-  | 'admin';
 
 interface Toast {
   id: string;

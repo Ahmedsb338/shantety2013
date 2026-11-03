@@ -1,5 +1,23 @@
 export type Language = 'ar' | 'en';
 
+export type StoreView =
+  | 'home'
+  | 'shop'
+  | 'categories'
+  | 'product-detail'
+  | 'cart'
+  | 'checkout'
+  | 'order-confirmation'
+  | 'order-tracking'
+  | 'account'
+  | 'wishlist'
+  | 'about'
+  | 'contact'
+  | 'faq'
+  | 'shipping-policy'
+  | 'returns-policy'
+  | 'admin';
+
 export interface Category {
   id: string;
   slug: string;
@@ -105,11 +123,12 @@ export interface CustomerAddress {
   street_address: string;
   building_floor?: string;
   notes?: string;
+  delivery_notes?: string;
   is_default: boolean;
 }
 
 export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
-export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
+export type PaymentStatus = 'pending' | 'awaiting_payment' | 'paid' | 'failed' | 'expired' | 'partially_refunded' | 'refunded';
 export type PaymentMethod = 'cod' | 'card_paymob' | 'instapay_vodafone';
 
 export interface OrderItem {

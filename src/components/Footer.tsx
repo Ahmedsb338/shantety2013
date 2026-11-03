@@ -1,6 +1,7 @@
 import React from 'react';
 import { useStore, StoreView } from '../context/StoreContext';
 import { OFFICIAL_BRAND, businessInfo, getWhatsAppUrl } from '../data/initialData';
+import { NewsletterSignup } from './NewsletterSignup';
 import {
   Phone,
   Mail,
@@ -25,6 +26,9 @@ export const Footer: React.FC = () => {
   return (
     <footer className="bg-[#18181B] text-stone-300 pt-12 pb-8 border-t border-stone-800 text-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+        {/* Newsletter Signup Banner */}
+        <NewsletterSignup />
+
         {/* Main Grid: 4 Columns with Responsive Stacking */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-10 pb-10 border-b border-stone-800">
           {/* Col 1: Brand & Official Contact (cols-4) */}
@@ -258,6 +262,15 @@ export const Footer: React.FC = () => {
                   className="hover:text-white transition-colors cursor-pointer text-start"
                 >
                   {language === 'ar' ? 'الأسئلة الشائعة' : 'FAQ'}
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => handleNav('admin')}
+                  className="hover:text-stone-300 text-stone-500 transition-colors cursor-pointer text-start flex items-center gap-1.5 pt-1 text-[11px]"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-stone-500" />
+                  <span>{language === 'ar' ? 'بوابة الإدارة (المشرفين)' : 'Admin Portal'}</span>
                 </button>
               </li>
             </ul>

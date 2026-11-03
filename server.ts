@@ -224,6 +224,21 @@ async function startServer() {
     }
   });
 
+  // ─── Public Newsletter Subscription (Supabase Persistent) ────────────────
+  app.post('/api/newsletter/subscribe', async (req, res) => {
+    try {
+      const { email, source } = req.body;
+      const result = await authoritativeStore.subscribeNewsletter(email, source, process.env);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Failed to subscribe',
+        error_ar: 'تعذر الاشتراك في النشرة البريدية. يرجى التأكد من صحة البريد الإلكتروني.',
+      });
+    }
+  });
+
   // ─── Admin Orders Management ─────────────────────────────────────────────
   app.get('/api/orders', async (req, res) => {
     const user = await checkAdmin(req, res, 'any_active_admin');

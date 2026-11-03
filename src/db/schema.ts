@@ -164,6 +164,16 @@ export const auditLogs = pgTable('audit_logs', {
   details: text('details'),
 });
 
+// Newsletter Subscribers
+export const newsletterSubscribers = pgTable('newsletter_subscribers', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  status: text('status').notNull().default('active'),
+  source: text('source').default('homepage_footer'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // Relations
 export const productsRelations = relations(products, ({ one, many }) => ({
   category: one(categories, {

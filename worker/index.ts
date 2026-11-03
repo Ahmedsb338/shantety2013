@@ -1,6 +1,7 @@
 import { Hono } from "hono";
+import crypto from "crypto";
 import { authoritativeStore } from "../src/server/commerceService";
-import { getBackendReadiness } from "../src/server/supabaseBackend";
+import { getBackendReadiness, getSupabaseAdminClient } from "../src/server/supabaseBackend";
 import { verifyAdminRequest, VerifiedAdminUser } from "../src/server/authMiddleware";
 
 type Bindings = {
@@ -20,6 +21,9 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+// In-memory idempotency cache: key -> { hash: string, response: any, statusCode: number, timestamp: number }
+const idempotencyCache = new Map<string, { hash: string; response: any; statusCode: number; timestamp: number }>();
+
 // ─── 1. Restricted CORS Middleware ─────────────────────────────
 const ALLOWED_ORIGINS = [
   "https://shantety.shop",
@@ -28,6 +32,44 @@ const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://localhost:5173",
 ];
+
+// Helper to derive authenticated customer ID from verified Supabase Bearer JWT (Never trust client body customer_id!)
+async function extractVerifiedCustomer(c: any): Promise<{ customerId?: string; email?: string } | Response> {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return {}; // Guest checkout (customerId is strictly undefined)
+  }
+
+  const token = authHeader.slice(7).trim();
+  const supabase = getSupabaseAdminClient(c.env);
+  if (supabase) {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      if (error || !user) {
+        return c.json(
+          {
+            success: false,
+            error: "Unauthorized: Invalid or expired customer authentication session",
+            error_ar: "جلسة الدخول منتهية الصلاحية أو غير صالحة. يرجى تسجيل الدخول مجدداً.",
+          },
+          401
+        );
+      }
+      return { customerId: user.id, email: user.email };
+    } catch (e: any) {
+      return c.json(
+        {
+          success: false,
+          error: `Authentication verification error: ${e.message}`,
+          error_ar: "تعذر التحقق من جلسة العميل المعتمدة.",
+        },
+        401
+      );
+    }
+  }
+
+  return {};
+}
 
 app.use("*", async (c, next) => {
   const origin = c.req.header("Origin");
@@ -141,16 +183,60 @@ app.get("/api/products/:id", (c) => {
   return c.json(prod);
 });
 
-// ─── 5. Authoritative Server-Side Checkout ─────────────────────
+// ─── 5. Authoritative Server-Side Checkout (Customer JWT Identity & Idempotency) ──
 app.post("/api/checkout", async (c) => {
   try {
     const body = await c.req.json();
-    const result = authoritativeStore.processCheckout(body, c.env);
-    if (!result.success) {
-      const status = result.error_en?.includes("not configured") ? 503 : 400;
-      return c.json(result, status);
+
+    // 1. Idempotency Check
+    const idempotencyKey = c.req.header("Idempotency-Key");
+    let requestHash: string | undefined;
+    if (idempotencyKey) {
+      requestHash = crypto.createHash("sha256").update(JSON.stringify(body)).digest("hex");
+      const cached = idempotencyCache.get(idempotencyKey);
+      if (cached) {
+        if (cached.hash === requestHash) {
+          c.header("Idempotency-Replay", "true");
+          return c.json(cached.response, cached.statusCode as any);
+        } else {
+          return c.json(
+            {
+              success: false,
+              error: "Conflict: Idempotency key reused with different request payload",
+              error_ar: "تعارض: مفتاح العملية مكرر مع بيانات مختلفة.",
+            },
+            409
+          );
+        }
+      }
     }
-    return c.json(result, 201);
+
+    // 2. Server-Authoritative Customer Identity Derivation (Never trust client body customer_id!)
+    const customerAuth = await extractVerifiedCustomer(c);
+    if (customerAuth instanceof Response) {
+      return customerAuth;
+    }
+
+    // Overwrite or strip any client-supplied customer_id with the verified token UUID
+    body.customer_id = customerAuth.customerId;
+    if (customerAuth.email) {
+      body.customer_email = customerAuth.email;
+    }
+
+    const result = authoritativeStore.processCheckout(body, c.env);
+    const statusCode = result.success ? 201 : result.error_en?.includes("not configured") ? 503 : 400;
+
+    // Cache successful idempotency response
+    if (idempotencyKey && requestHash && result.success) {
+      idempotencyCache.set(idempotencyKey, {
+        hash: requestHash,
+        response: result,
+        statusCode: 201,
+        timestamp: Date.now(),
+      });
+    }
+
+    return c.json(result, statusCode);
   } catch (e: any) {
     return c.json({ error: e.message || "Checkout error" }, 500);
   }
@@ -159,6 +245,16 @@ app.post("/api/checkout", async (c) => {
 app.post("/api/orders", async (c) => {
   try {
     const body = await c.req.json();
+    const customerAuth = await extractVerifiedCustomer(c);
+    if (customerAuth instanceof Response) {
+      return customerAuth;
+    }
+
+    body.customer_id = customerAuth.customerId;
+    if (customerAuth.email) {
+      body.customer_email = customerAuth.email;
+    }
+
     const cartItems = (body.items || body.rawCartItems || []).map((it: any) => ({
       variant_id: it.variant_id || it.variant?.id,
       quantity: it.quantity || 1,
@@ -180,7 +276,7 @@ app.post("/api/orders", async (c) => {
   }
 });
 
-// ─── 6. Secure Guest Order Tracking ────────────────────────────
+// ─── 6. Secure Guest Order Tracking & Cryptographic Claiming ───
 app.post("/api/orders/track", async (c) => {
   try {
     const { order_number, tracking_token } = await c.req.json();
@@ -193,6 +289,64 @@ app.post("/api/orders/track", async (c) => {
     return c.json(result);
   } catch (e: any) {
     return c.json({ error: e.message || "Tracking lookup error" }, 500);
+  }
+});
+
+app.post("/api/orders/claim", async (c) => {
+  try {
+    const customerAuth = await extractVerifiedCustomer(c);
+    if (customerAuth instanceof Response) {
+      return customerAuth;
+    }
+    if (!customerAuth.customerId) {
+      return c.json(
+        {
+          success: false,
+          error: "Unauthorized: You must be logged into your customer account to claim an order",
+          error_ar: "غير مصرح: يجب تسجيل الدخول إلى حساب العميل لربط الطلب.",
+        },
+        401
+      );
+    }
+
+    const { order_number, tracking_token } = await c.req.json();
+    const result = authoritativeStore.claimGuestOrder(
+      order_number,
+      tracking_token,
+      customerAuth.customerId,
+      customerAuth.email || "customer@shantety.com",
+      c.env
+    );
+
+    if (!result.success) {
+      return c.json(result, 400);
+    }
+    return c.json({
+      success: true,
+      order_number: result.order_number,
+      message_ar: "تم ربط الطلب بحسابك بنجاح!",
+      message_en: "Order successfully linked to your customer account!",
+    });
+  } catch (e: any) {
+    return c.json({ error: e.message || "Order claiming error" }, 500);
+  }
+});
+
+// ─── 6.1 Public Newsletter Subscription (Supabase Persistent) ──
+app.post("/api/newsletter/subscribe", async (c) => {
+  try {
+    const { email, source } = await c.req.json();
+    const result = await authoritativeStore.subscribeNewsletter(email, source, c.env);
+    return c.json(result);
+  } catch (e: any) {
+    return c.json(
+      {
+        success: false,
+        error: e.message || "Subscription error",
+        error_ar: "تعذر الاشتراك في النشرة البريدية. يرجى التأكد من صحة البريد الإلكتروني.",
+      },
+      400
+    );
   }
 });
 

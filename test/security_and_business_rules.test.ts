@@ -1,6 +1,9 @@
 import { authoritativeStore, hashTrackingToken } from '../src/server/commerceService';
 import { getBackendReadiness, assertProductionBackendReady, BackendConfigurationError } from '../src/server/supabaseBackend';
 import { verifyAdminRequest } from '../src/server/authMiddleware';
+import { maskSupabaseUrl, maskSupabaseAnonKey } from '../src/lib/supabaseDiagnostics';
+import { generateSeoMetadata } from '../src/utils/seo';
+import { INITIAL_CATEGORIES } from '../src/data/initialData';
 
 interface TestResult {
   name: string;
@@ -327,6 +330,193 @@ export async function runSecurityAndBusinessTests() {
     'success=false stating Migration 004 is required',
     `success=${cmsUpdateInProd.success}, error="${cmsUpdateInProd.error}"`,
     'Verified CMS production blocker'
+  );
+
+  // Test 18: Newsletter subscription validates email and returns bilingual response
+  const validSub = await authoritativeStore.subscribeNewsletter('shantety.fan@example.com', 'footer_unit_test');
+  assert(
+    'Newsletter subscription accepts valid email and records subscriber',
+    validSub.success === true && Boolean(validSub.messageAr) && Boolean(validSub.messageEn),
+    'success=true with bilingual confirmations',
+    `success=${validSub.success}, isNew=${validSub.isNew}`,
+    'Verified newsletter subscription payload'
+  );
+
+  // Test 19: Newsletter subscription rejects invalid email formats
+  let invalidEmailRejected = false;
+  try {
+    await authoritativeStore.subscribeNewsletter('invalid-not-an-email');
+  } catch (err: any) {
+    invalidEmailRejected = err.message.includes('Invalid email');
+  }
+  assert(
+    'Newsletter subscription strictly validates email pattern',
+    invalidEmailRejected,
+    'Throws error on invalid email address format',
+    `invalidEmailRejected=${invalidEmailRejected}`,
+    'Verified email format validation'
+  );
+
+  // Test 20: Diagnostic masking protects Supabase URL and Anon Key from sensitive exposure
+  const sampleUrl = 'https://mziomwhluwjtadchnxdz.supabase.co';
+  const sampleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZWZlcmVuY2UiOiJtemlvbXdobHV3anRhZGNobnhkeiJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+  const maskedUrl = maskSupabaseUrl(sampleUrl);
+  const maskedKey = maskSupabaseAnonKey(sampleKey);
+
+  const urlMaskedProperly = maskedUrl.includes('***') && !maskedUrl.includes('mziomwhluwjtadchnxdz');
+  const keyMaskedProperly = maskedKey.includes('MASKED_JWT') && !maskedKey.includes('SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c');
+
+  assert(
+    'Diagnostic masking utility shields Supabase URL and Anon Key from log leakage',
+    urlMaskedProperly && keyMaskedProperly,
+    'Both URL and anon key safely redacted with length metadata only',
+    `maskedUrl="${maskedUrl}", maskedKey="${maskedKey}"`,
+    'Verified sensitive credential shielding'
+  );
+
+  // Test 21: Dynamic SEO generates optimized title & description for Home, Category, and Shop
+  const homeSeo = generateSeoMetadata({ currentView: 'home', language: 'ar' });
+  const homeTitleValid = homeSeo.title.includes('شنطتي') && homeSeo.title.length >= 30;
+  const homeDescValid = homeSeo.description.length >= 120 && homeSeo.description.length <= 165;
+
+  assert(
+    'SEO utility generates high-performing titles & 120-160 char meta descriptions for Homepage',
+    homeTitleValid && homeDescValid && homeSeo.canonicalUrl === 'https://shantety.shop/',
+    'Title >= 30 chars, description 120-160 chars, canonical at root',
+    `title="${homeSeo.title}" (${homeSeo.title.length}c), desc_len=${homeSeo.description.length}`,
+    'Verified homepage SEO metadata'
+  );
+
+  // Test 22: Category-aware SEO updates title, description, and canonical URL in Shop view
+  const categorySeo = generateSeoMetadata({
+    currentView: 'shop',
+    selectedCategory: 'cat-bags',
+    categories: INITIAL_CATEGORIES,
+    language: 'ar',
+  });
+  const catTitleIncludesCategory = categorySeo.title.includes('حقائب اليد');
+  const catCanonicalMatches = categorySeo.canonicalUrl.includes('category=handbags');
+
+  assert(
+    'SEO utility dynamically customizes title & canonical link when filtering by category',
+    catTitleIncludesCategory && catCanonicalMatches,
+    'Title includes category name "حقائب اليد" and canonical has category query parameter',
+    `title="${categorySeo.title}", canonical="${categorySeo.canonicalUrl}"`,
+    'Verified category-filtered SEO'
+  );
+
+  // Test 23: Product Detail SEO generates Product Schema.org JSON-LD with exact price & offers
+  const sampleProduct = authoritativeStore.getPublicProducts()[0];
+  const productSeo = generateSeoMetadata({
+    currentView: 'product-detail',
+    selectedProduct: sampleProduct,
+    language: 'ar',
+  });
+  const schema = productSeo.schemaJsonLd;
+  const isProductSchemaValid =
+    schema?.['@type'] === 'Product' &&
+    schema?.offers?.priceCurrency === 'EGP' &&
+    schema?.brand?.name.includes('شنطتي') &&
+    schema?.offers?.availability === 'https://schema.org/InStock';
+
+  assert(
+    'Product Detail SEO injects Schema.org Product structured data with accurate EGP offer and availability',
+    Boolean(isProductSchemaValid && productSeo.title.includes(sampleProduct.name_ar)),
+    'Valid Product Schema with EGP currency, brand, and in-stock status',
+    `schemaType=${schema?.['@type']}, price=${schema?.offers?.price}, title="${productSeo.title}"`,
+    'Verified Product schema JSON-LD'
+  );
+
+  // Test 24: Robots directives correctly protect transactional pages and index public storefront
+  const adminSeo = generateSeoMetadata({ currentView: 'admin' });
+  const checkoutSeo = generateSeoMetadata({ currentView: 'checkout' });
+  const trackSeo = generateSeoMetadata({ currentView: 'order-tracking' });
+
+  const isRobotsRestricted =
+    adminSeo.robots === 'noindex, nofollow' &&
+    checkoutSeo.robots === 'noindex, nofollow' &&
+    trackSeo.robots === 'noindex, nofollow' &&
+    homeSeo.robots === 'index, follow' &&
+    categorySeo.robots === 'index, follow';
+
+  // Test 25: Checkout aggregates duplicate variant IDs and sorts deterministically
+  const testVar = authoritativeStore.getAdminProducts()[0]?.variants?.[0];
+  const duplicateCheckout = authoritativeStore.processCheckout({
+    customer_name: 'ريم التكرار',
+    customer_phone: '01099887766',
+    shipping_address: {
+      id: 'addr-dup',
+      customer_name: 'ريم التكرار',
+      phone: '01099887766',
+      governorate: 'الجيزة',
+      city: 'الدقي',
+      street_address: 'شارع مصدق',
+      is_default: true,
+    },
+    payment_method: 'cod',
+    cartItems: [
+      { variant_id: testVar!.id, quantity: 1 },
+      { variant_id: testVar!.id, quantity: 2 },
+    ],
+  });
+  const aggregatedItem = duplicateCheckout.order?.items.find((it) => it.variant_id === testVar!.id);
+  assert(
+    'Checkout aggregates duplicate variant IDs into a single line item',
+    Boolean(duplicateCheckout.success && aggregatedItem?.quantity === 3),
+    'Aggregated quantity should equal 3 (1 + 2)',
+    `Success=${duplicateCheckout.success}, Aggregated quantity=${aggregatedItem?.quantity}`,
+    'Duplicate items aggregated cleanly'
+  );
+
+  // Test 26: Electronic payment method initializes status as awaiting_payment (Never marks paid on checkout)
+  const onlineCheckout = authoritativeStore.processCheckout({
+    customer_name: 'نوران إلكتروني',
+    customer_phone: '01055554444',
+    shipping_address: {
+      id: 'addr-online',
+      customer_name: 'نوران إلكتروني',
+      phone: '01055554444',
+      governorate: 'القاهرة',
+      city: 'مصر الجديدة',
+      street_address: 'شارع النزهة',
+      is_default: true,
+    },
+    payment_method: 'card_paymob',
+    cartItems: [{ variant_id: testVar!.id, quantity: 1 }],
+  });
+  const onlineOrder = onlineCheckout.order;
+  assert(
+    'Electronic payment initializes payment_status as awaiting_payment (never paid by method alone)',
+    Boolean(onlineCheckout.success && onlineOrder?.payment_status === 'awaiting_payment'),
+    'payment_status="awaiting_payment"',
+    `payment_status="${onlineOrder?.payment_status}"`,
+    'Verified payment status isolation'
+  );
+
+  // Test 27: Cryptographic guest order claiming verifies tracking token and links order to customer
+  const guestOrderToClaim = onlineOrder!;
+  const rawToken = onlineCheckout.tracking_token!;
+  const claimAttemptWrongToken = authoritativeStore.claimGuestOrder(
+    guestOrderToClaim.order_number,
+    'tk_wrong_fake_token',
+    'cust-verified-uuid-99',
+    'customer99@shantety.com'
+  );
+  const claimAttemptValid = authoritativeStore.claimGuestOrder(
+    guestOrderToClaim.order_number,
+    rawToken,
+    'cust-verified-uuid-99',
+    'customer99@shantety.com'
+  );
+  const claimedOrderInStore = authoritativeStore['state'].orders.find(
+    (o) => o.order_number === guestOrderToClaim.order_number
+  );
+  assert(
+    'Cryptographic guest order claiming requires matching tracking token and binds customer_id',
+    !claimAttemptWrongToken.success && claimAttemptValid.success && claimedOrderInStore?.customer_id === 'cust-verified-uuid-99',
+    'Wrong token rejected; valid token links order to cust-verified-uuid-99',
+    `Wrong token success=${claimAttemptWrongToken.success}, Valid token success=${claimAttemptValid.success}, Bound customer_id=${claimedOrderInStore?.customer_id}`,
+    'Verified one-time cryptographic claiming protocol'
   );
 
   console.log('\n--- TEST EXECUTION SUMMARY ---');

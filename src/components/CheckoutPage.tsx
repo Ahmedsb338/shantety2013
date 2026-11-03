@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
+import { useCustomerAuth } from '../context/CustomerAuthContext';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { StoreDatabase } from '../services/storeDatabase';
 import { EGYPTIAN_GOVERNORATES, OFFICIAL_BRAND } from '../data/initialData';
 import { PaymentMethod } from '../types/ecommerce';
@@ -14,6 +16,8 @@ import {
   ArrowRight,
   ArrowLeft,
   Lock,
+  User,
+  MapPin,
 } from 'lucide-react';
 
 export const CheckoutPage: React.FC = () => {
@@ -27,18 +31,48 @@ export const CheckoutPage: React.FC = () => {
     setActiveOrder,
     showToast,
   } = useStore();
+  const {
+    customer,
+    isAuthenticated,
+    savedAddresses,
+    defaultAddress,
+    register,
+  } = useCustomerAuth();
 
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [selectedGov, setSelectedGov] = useState('القاهرة');
-  const [city, setCity] = useState('');
-  const [streetAddress, setStreetAddress] = useState('');
-  const [buildingFloor, setBuildingFloor] = useState('');
-  const [deliveryNotes, setDeliveryNotes] = useState('');
+  const [fullName, setFullName] = useState(customer?.fullName || '');
+  const [phone, setPhone] = useState(customer?.phone || '');
+  const [email, setEmail] = useState(customer?.email || '');
+  const [selectedGov, setSelectedGov] = useState(
+    customer?.governorate || defaultAddress?.governorate || 'القاهرة'
+  );
+  const [city, setCity] = useState(defaultAddress?.city || '');
+  const [streetAddress, setStreetAddress] = useState(defaultAddress?.street_address || '');
+  const [buildingFloor, setBuildingFloor] = useState(defaultAddress?.building_floor || '');
+  const [deliveryNotes, setDeliveryNotes] = useState(defaultAddress?.delivery_notes || '');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cod');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Guest Account Creation State
+  const [createAccount, setCreateAccount] = useState(false);
+  const [guestPassword, setGuestPassword] = useState('');
+  const [guestPasswordConfirm, setGuestPasswordConfirm] = useState('');
+
+  // Prepopulate verified customer profile and default address dynamically
+  useEffect(() => {
+    if (customer) {
+      if (!fullName) setFullName(customer.fullName || '');
+      if (!phone) setPhone(customer.phone || '');
+      if (!email) setEmail(customer.email || '');
+      if (defaultAddress) {
+        if (!city) setCity(defaultAddress.city || '');
+        if (!streetAddress) setStreetAddress(defaultAddress.street_address || '');
+        if (!buildingFloor) setBuildingFloor(defaultAddress.building_floor || '');
+        if (!deliveryNotes) setDeliveryNotes(defaultAddress.delivery_notes || '');
+        if (defaultAddress.governorate) setSelectedGov(defaultAddress.governorate);
+      }
+    }
+  }, [customer, defaultAddress]);
 
   // Dynamic shipping calculation
   const govData = EGYPTIAN_GOVERNORATES.find(
@@ -63,7 +97,7 @@ export const CheckoutPage: React.FC = () => {
         </p>
         <button
           onClick={() => setCurrentView('shop')}
-          className="px-6 py-2.5 bg-[#E10600] text-white text-xs font-bold rounded-lg"
+          className="px-6 py-2.5 bg-[#E10600] text-white text-xs font-bold rounded-lg cursor-pointer"
         >
           {language === 'ar' ? 'الذهاب للمتجر' : 'Return to Shop'}
         </button>
@@ -74,6 +108,33 @@ export const CheckoutPage: React.FC = () => {
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+
+    // Validate guest registration if requested
+    if (!isAuthenticated && createAccount) {
+      if (!email.trim()) {
+        setErrorMessage(
+          language === 'ar'
+            ? 'يرجى إدخال بريدك الإلكتروني لإنشاء الحساب'
+            : 'Email address is required for account creation'
+        );
+        return;
+      }
+      if (guestPassword.length < 8) {
+        setErrorMessage(
+          language === 'ar'
+            ? 'كلمة المرور يجب أن تتكون من 8 أحرف على الأقل'
+            : 'Password must be at least 8 characters'
+        );
+        return;
+      }
+      if (guestPassword !== guestPasswordConfirm) {
+        setErrorMessage(
+          language === 'ar' ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match'
+        );
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     const rawCartItems = cart.map((item) => ({
@@ -82,11 +143,27 @@ export const CheckoutPage: React.FC = () => {
     }));
 
     try {
+      // 1. Build auth headers - extract verified session token if customer is authenticated
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'chk-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9),
+      };
+
+      if (isSupabaseConfigured) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            headers['Authorization'] = `Bearer ${session.access_token}`;
+          }
+        } catch (authErr) {
+          console.warn('Could not read client session token:', authErr);
+        }
+      }
+
+      // 2. Submit order to server (customer_id is derived server-side from Bearer token!)
       const response = await fetch('/api/checkout', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           customer_name: fullName.trim(),
           customer_phone: phone.trim(),
@@ -116,6 +193,38 @@ export const CheckoutPage: React.FC = () => {
         setErrorMessage(err || (language === 'ar' ? 'فشل إتمام الطلب' : 'Failed to place order'));
         showToast(err || 'Order submission error', 'error');
         return;
+      }
+
+      // 3. If guest opted to create an account, attempt decoupled registration
+      if (!isAuthenticated && createAccount && email) {
+        try {
+          const regResult = await register({
+            fullName: fullName.trim(),
+            email: email.trim(),
+            password: guestPassword,
+            phone: phone.trim(),
+            governorate: selectedGov,
+          });
+
+          if (regResult.success) {
+            showToast(
+              language === 'ar'
+                ? 'تم إنشاء حسابك وتأكيد طلبك بنجاح!'
+                : 'Account created & order confirmed!',
+              'success'
+            );
+          } else {
+            // SAFE DECOUPLING: DO NOT FAIL ORDER!
+            showToast(
+              language === 'ar'
+                ? `تم تأكيد طلبك بنجاح! (${regResult.error || 'تعذر إنشاء الحساب'})`
+                : `Order confirmed! (${regResult.error || 'Account creation incomplete'})`,
+              'info'
+            );
+          }
+        } catch (regErr: any) {
+          console.warn('Decoupled registration attempt error:', regErr);
+        }
       }
 
       // Success: Clear cart, set active order, and navigate to confirmation
@@ -153,6 +262,30 @@ export const CheckoutPage: React.FC = () => {
         <div className="max-w-3xl mx-auto mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700 text-xs font-semibold">
           <AlertCircle className="w-5 h-5 shrink-0" />
           <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {/* Authenticated Customer Verified Banner */}
+      {isAuthenticated && customer && (
+        <div className="max-w-7xl mx-auto mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 text-xs text-emerald-900 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+              {customer.fullName ? customer.fullName.charAt(0).toUpperCase() : 'C'}
+            </div>
+            <div>
+              <span className="font-bold block text-sm">
+                {language === 'ar' ? `أهلاً بكِ مجدداً، ${customer.fullName}` : `Welcome back, ${customer.fullName}`}
+              </span>
+              <span className="text-[11px] text-emerald-700">
+                {language === 'ar'
+                  ? 'تم استرجاع بياناتك وعنوانك المعتمد تلقائياً. يمكنك مراجعتها وتعديلها بحرية قبل التأكيد.'
+                  : 'Your delivery info has been automatically prepopulated from your verified account.'}
+              </span>
+            </div>
+          </div>
+          <span className="hidden sm:inline-block bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full text-[10px] font-bold">
+            {language === 'ar' ? 'حساب عميل موثق' : 'Verified Customer'}
+          </span>
         </div>
       )}
 
@@ -203,7 +336,7 @@ export const CheckoutPage: React.FC = () => {
 
             <div className="space-y-1">
               <label className="text-xs font-bold text-stone-700">
-                {language === 'ar' ? 'البريد الإلكتروني (اختياري لاستلام الفاتورة)' : 'Email Address (Optional)'}
+                {language === 'ar' ? 'البريد الإلكتروني (لاستلام الفاتورة وتتبع الشحنة)' : 'Email Address (For invoice & tracking)'}
               </label>
               <input
                 type="email"
@@ -213,6 +346,63 @@ export const CheckoutPage: React.FC = () => {
                 className="w-full text-xs p-3 rounded-lg border border-stone-300 focus:outline-none focus:border-[#E10600] focus:ring-1 focus:ring-[#E10600]"
               />
             </div>
+
+            {/* Optional Guest Account Creation for Non-Logged-in Shoppers */}
+            {!isAuthenticated && (
+              <div className="pt-3 border-t border-stone-100">
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={createAccount}
+                    onChange={(e) => setCreateAccount(e.target.checked)}
+                    className="mt-0.5 rounded border-stone-300 text-[#E10600] focus:ring-[#E10600]"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-stone-900 block">
+                      {language === 'ar'
+                        ? 'إنشاء حساب جديد ومتابعة طلباتي بسهولة'
+                        : 'Create an account to track orders easily'}
+                    </span>
+                    <span className="text-[11px] text-stone-500 block">
+                      {language === 'ar'
+                        ? 'اختياري — لحفظ العناوين ومتابعة الطلبات وتجربة شراء أسرع في المرات القادمة.'
+                        : 'Optional — save addresses, track order progress, and speed up future checkouts.'}
+                    </span>
+                  </div>
+                </label>
+
+                {createAccount && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 pt-3 border-t border-stone-100 animate-fadeIn">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-stone-700">
+                        {language === 'ar' ? 'كلمة المرور للحساب الجديد *' : 'Password (min 8 chars) *'}
+                      </label>
+                      <input
+                        type="password"
+                        required={createAccount}
+                        value={guestPassword}
+                        onChange={(e) => setGuestPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full text-xs p-3 rounded-lg border border-stone-300 focus:outline-none focus:border-[#E10600]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-stone-700">
+                        {language === 'ar' ? 'تأكيد كلمة المرور *' : 'Confirm Password *'}
+                      </label>
+                      <input
+                        type="password"
+                        required={createAccount}
+                        value={guestPasswordConfirm}
+                        onChange={(e) => setGuestPasswordConfirm(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full text-xs p-3 rounded-lg border border-stone-300 focus:outline-none focus:border-[#E10600]"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Section 2: Egyptian Delivery Address */}
@@ -223,6 +413,46 @@ export const CheckoutPage: React.FC = () => {
               </span>
               <span>{language === 'ar' ? 'عنوان التوصيل في مصر' : 'Egyptian Delivery Address'}</span>
             </h2>
+
+            {/* Saved Addresses Quick Selector for Authenticated Customers */}
+            {isAuthenticated && savedAddresses.length > 0 && (
+              <div className="p-3 bg-stone-50 rounded-xl border border-stone-200/80 mb-2">
+                <span className="text-[11px] font-bold text-stone-600 block mb-2 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-[#E10600]" />
+                  <span>{language === 'ar' ? 'اختيار عنوان محفوظ في حسابك:' : 'Select from your saved addresses:'}</span>
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {savedAddresses.map((addr) => {
+                    const isSelected = selectedGov === addr.governorate && city === addr.city && streetAddress === addr.street_address;
+                    return (
+                      <button
+                        key={addr.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedGov(addr.governorate);
+                          setCity(addr.city);
+                          setStreetAddress(addr.street_address);
+                          setBuildingFloor(addr.building_floor || '');
+                          setDeliveryNotes(addr.delivery_notes || '');
+                        }}
+                        className={`p-2.5 rounded-lg border text-start text-xs cursor-pointer transition-all ${
+                          isSelected
+                            ? 'border-[#E10600] bg-white ring-1 ring-[#E10600] shadow-xs'
+                            : 'border-stone-200 bg-white hover:border-stone-300'
+                        }`}
+                      >
+                        <span className="font-bold block text-stone-900 truncate">
+                          {addr.city} — {addr.governorate}
+                        </span>
+                        <span className="text-[11px] text-stone-500 block truncate">
+                          {addr.street_address}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">

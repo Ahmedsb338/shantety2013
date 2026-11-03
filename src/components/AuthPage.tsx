@@ -543,7 +543,7 @@ export const AuthPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Tabs: Sign In vs Sign Up */}
+        {/* Tabs: Sign In vs Sign Up vs Admin Portal */}
         <div className="flex border-b border-stone-200 bg-stone-50 text-xs font-bold">
           <button
             type="button"
@@ -572,6 +572,16 @@ export const AuthPage: React.FC = () => {
             }`}
           >
             {language === 'ar' ? 'إنشاء حساب جديد' : 'Create Account'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCurrentView('admin');
+            }}
+            className="flex-1 py-3 text-center border-b-2 border-transparent text-stone-500 hover:text-[#E10600] hover:bg-stone-100/60 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-stone-400" />
+            <span>{language === 'ar' ? 'بوابة الإدارة' : 'Admin Portal'}</span>
           </button>
         </div>
 
